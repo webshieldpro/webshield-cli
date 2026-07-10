@@ -5,6 +5,11 @@
 # targets, no per-target toolchains and no Docker. Setup:
 #   cargo install cargo-zigbuild && pip install ziglang   # or a system zig
 #
+# Exception — Apple targets: apple-darwin↔apple-darwin builds go through the plain
+# Apple/host toolchain (Apple clang cross-compiles between darwin arches natively),
+# so on a macOS host both darwin targets build with the SDK already present and no
+# zig required. This is how the release CI builds macOS on a macos-latest runner.
+#
 # Without zig the script builds only the native target (skipping the rest with a
 # warning), so a run always produces something. Targets can be passed as arguments.
 set -uo pipefail
@@ -52,16 +57,27 @@ done
 
 sha256() { command -v sha256sum >/dev/null 2>&1 && sha256sum "$@" || shasum -a 256 "$@"; }
 
+# Can this target be built with the plain host toolchain (no zig)? True for the
+# exact host, and for a darwin target while on a darwin host (Apple clang handles
+# apple-darwin↔apple-darwin cross-compilation itself).
+native_buildable() {
+  [ "$1" = "$HOST" ] && return 0
+  case "$HOST:$1" in
+    *-apple-darwin:*-apple-darwin) return 0 ;;
+  esac
+  return 1
+}
+
 built=0
 for target in "${TARGETS[@]}"; do
-  if [ "$target" != "$HOST" ] && [ "$HAVE_ZIG" != 1 ]; then
+  if ! native_buildable "$target" && [ "$HAVE_ZIG" != 1 ]; then
     echo "skipping $target: cargo-zigbuild required"
     continue
   fi
 
   rustup target add "$target" >/dev/null 2>&1 || true
   echo ">> building $target"
-  if [ "$target" = "$HOST" ]; then
+  if native_buildable "$target"; then
     cargo build --release --target "$target"
   else
     cargo zigbuild --release --target "$target"

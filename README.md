@@ -31,13 +31,18 @@ cargo install cargo-zigbuild && pip install ziglang   # once
 ./build-release.sh                    # → dist/ (tar.gz/zip + SHA256SUMS)
 ```
 
-Without zig the script builds only the native target. Artifacts are named
-`webshield-<version>-<target>.{tar.gz,zip}`; shell completions are bundled
-into every archive.
+Without zig the script builds only the native target. macOS is the exception:
+`apple-darwin` targets build through the plain Apple toolchain, so on a macOS
+host `./build-release.sh x86_64-apple-darwin aarch64-apple-darwin` produces both
+without zig. Artifacts are named `webshield-<version>-<target>.{tar.gz,zip}`;
+shell completions are bundled into every archive.
 
 Automatic publishing to a GitHub release — on push of a `v<version>` tag
-(workflow `.github/workflows/release.yaml`). The tag version must match
-`version` in `Cargo.toml`. Manual publishing — `gh release create v<version> dist/*`.
+(workflow `.github/workflows/release.yaml`): Linux/Windows cross-build on an
+Ubuntu runner, macOS builds natively on a macOS runner, and a final job merges
+all archives, writes a single `SHA256SUMS` and creates the release. The tag
+version must match `version` in `Cargo.toml`. Manual publishing —
+`gh release create v<version> dist/*`.
 
 ## Authentication
 

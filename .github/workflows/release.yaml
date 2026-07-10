@@ -1,5 +1,7 @@
 # Builds and publishes a release on push of a `v1.2.3`-style tag.
-# macOS targets require an SDK and are skipped best-effort on the ubuntu runner.
+# Linux/Windows cross-build on ubuntu (cargo-zigbuild); macOS builds natively on
+# a macos-latest runner. The publish job gathers every archive and computes a
+# single combined SHA256SUMS before creating the release.
 name: release
 
 on:
@@ -11,13 +13,12 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  # Fail fast before any build: installer asset names are derived from the tag
+  # version, artifact names from Cargo.toml — a mismatch breaks installs.
+  version-check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      # Fail fast before the build: installer asset names are derived from the
-      # tag version, artifact names from Cargo.toml — a mismatch breaks installs.
       - name: Check that the tag matches the Cargo.toml version
         run: |
           CARGO_VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
@@ -26,7 +27,27 @@ jobs:
             exit 1
           fi
 
-      - name: Install toolchain and cross-build tooling
+  build:
+    needs: version-check
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            targets: >-
+              x86_64-unknown-linux-musl
+              aarch64-unknown-linux-musl
+              x86_64-pc-windows-gnu
+          - os: macos-latest
+            targets: >-
+              x86_64-apple-darwin
+              aarch64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cross-build tooling (Linux)
+        if: runner.os == 'Linux'
         run: |
           rustup target add \
             x86_64-unknown-linux-musl aarch64-unknown-linux-musl \
@@ -34,12 +55,42 @@ jobs:
           cargo install cargo-zigbuild
           pip install --user ziglang
 
+      - name: Add Rust targets (macOS)
+        if: runner.os == 'macOS'
+        run: rustup target add x86_64-apple-darwin aarch64-apple-darwin || true
+
       - name: Build artifacts
+        run: ./build-release.sh ${{ matrix.targets }}
+
+      # Upload only the archives; SHA256SUMS is regenerated once in the publish
+      # job over the complete set (each build job produces a partial one).
+      - name: Upload archives
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.os }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist-parts
+
+      - name: Collect archives and compute checksums
         run: |
-          ./build-release.sh \
-            x86_64-unknown-linux-musl \
-            aarch64-unknown-linux-musl \
-            x86_64-pc-windows-gnu
+          mkdir -p dist
+          find dist-parts -type f \( -name '*.tar.gz' -o -name '*.zip' \) \
+            -exec cp {} dist/ \;
+          ( cd dist && sha256sum ./* > SHA256SUMS )
+          ls -l dist
 
       - name: Publish the release
         env:
