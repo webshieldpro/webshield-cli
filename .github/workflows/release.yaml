@@ -1,0 +1,39 @@
+# Builds and publishes a release on push of a `v1.2.3`-style tag.
+# macOS targets require an SDK and are skipped best-effort on the ubuntu runner.
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain and cross-build tooling
+        run: |
+          rustup target add \
+            x86_64-unknown-linux-musl aarch64-unknown-linux-musl \
+            x86_64-pc-windows-gnu || true
+          cargo install cargo-zigbuild
+          pip install --user ziglang
+
+      - name: Build artifacts
+        run: |
+          ./build-release.sh \
+            x86_64-unknown-linux-musl \
+            aarch64-unknown-linux-musl \
+            x86_64-pc-windows-gnu
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "$GITHUB_REF_NAME" --verify-tag
