@@ -46,7 +46,11 @@ pub async fn run(ctx: &Context, cmd: DomainsCommand) -> Result<()> {
                     vec![
                         d.id.to_string(),
                         d.name.clone(),
-                        if d.delegated { yes.into() } else { no.into() },
+                        match d.delegated {
+                            Some(true) => yes.into(),
+                            Some(false) => no.into(),
+                            None => dash.into(),
+                        },
                         d.current_tariff.as_ref().map(|t| t.name.clone()).unwrap_or_else(|| dash.into()),
                     ]
                 })
@@ -79,7 +83,11 @@ pub async fn run(ctx: &Context, cmd: DomainsCommand) -> Result<()> {
                     vec![i18n::tr(M::HDomain).into(), domain.name.clone()],
                     vec![
                         i18n::tr(M::HDelegated).into(),
-                        if domain.delegated { yes.into() } else { no.into() },
+                        match domain.delegated {
+                            Some(true) => yes.into(),
+                            Some(false) => no.into(),
+                            None => dash.into(),
+                        },
                     ],
                     vec![
                         i18n::tr(M::HTariff).into(),

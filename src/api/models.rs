@@ -15,8 +15,9 @@ pub struct Page<T> {
 pub struct Domain {
     pub id: i64,
     pub name: String,
+    /// Delegation status: `None` until the domain's NS delegation is checked.
     #[serde(default)]
-    pub delegated: bool,
+    pub delegated: Option<bool>,
     #[serde(default)]
     pub current_tariff: Option<Tariff>,
 }
