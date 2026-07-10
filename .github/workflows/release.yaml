@@ -16,6 +16,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Fail fast before the build: installer asset names are derived from the
+      # tag version, artifact names from Cargo.toml — a mismatch breaks installs.
+      - name: Check that the tag matches the Cargo.toml version
+        run: |
+          CARGO_VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
+          if [ "$GITHUB_REF_NAME" != "v$CARGO_VERSION" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match Cargo.toml version $CARGO_VERSION (expected tag v$CARGO_VERSION)"
+            exit 1
+          fi
+
       - name: Install toolchain and cross-build tooling
         run: |
           rustup target add \
