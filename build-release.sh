@@ -51,7 +51,7 @@ rm -rf "$OUT"; mkdir -p "$OUT"
 echo ">> native build (to generate completions)"
 cargo build --release >/dev/null || { echo "native build failed"; exit 1; }
 COMP="$(mktemp -d)"
-for sh in bash zsh fish powershell; do
+for sh in bash zsh fish powershell nushell; do
   "./target/release/$BIN" completion "$sh" > "$COMP/$BIN.$sh" 2>/dev/null || true
 done
 

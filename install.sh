@@ -98,9 +98,14 @@ install_completion() {
         dir="${XDG_CONFIG_HOME:-$HOME/.config}/fish/completions"
       fi
       file="$dir/webshield.fish" ;;
+    nu)
+      # Nushell has no autoload dir; the file must be sourced explicitly.
+      shell_name="nushell"
+      dir="${XDG_CONFIG_HOME:-$HOME/.config}/nushell/completions"
+      file="$dir/webshield.nu" ;;
     *)
       # Unknown or unset login shell — nothing to wire up automatically.
-      echo "Shell completion: run '$bin completion <bash|zsh|fish|powershell|elvish>' to generate it."
+      echo "Shell completion: run '$bin completion <bash|zsh|fish|powershell|elvish|nushell>' to generate it."
       return 0 ;;
   esac
 
@@ -110,6 +115,10 @@ install_completion() {
     # zsh loads completions from $fpath only; the per-user dir usually is not in it.
     if [ "$shell_name" = zsh ] && [ "$is_root" != 1 ]; then
       echo "  For zsh, add to ~/.zshrc before 'compinit': fpath=(\"$dir\" \$fpath)"
+    fi
+    # Nushell autoloads nothing; the script has to be sourced from the config.
+    if [ "$shell_name" = nushell ]; then
+      echo "  For Nushell, add to your config.nu: source \"$file\""
     fi
   else
     rm -f "$file" 2>/dev/null || true

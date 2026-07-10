@@ -9,8 +9,9 @@ mod i18n;
 mod output;
 
 use anyhow::{bail, Result};
-use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
+use clap::{CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
+use clap_complete_nushell::Nushell;
 
 use api::Client;
 use config::Config;
@@ -73,9 +74,21 @@ enum Command {
     Billing(commands::billing::BillingCommand),
     /// Generate a shell completion script.
     Completion {
-        /// Shell: bash, zsh, fish, powershell, elvish.
-        shell: Shell,
+        /// Shell: bash, zsh, fish, powershell, elvish, nushell.
+        shell: CompletionShell,
     },
+}
+
+/// Shells we can emit completions for. Wraps clap_complete's built-in `Shell`
+/// and adds Nushell, whose generator lives in a separate crate.
+#[derive(Clone, Copy, ValueEnum)]
+enum CompletionShell {
+    Bash,
+    Zsh,
+    Fish,
+    Powershell,
+    Elvish,
+    Nushell,
 }
 
 /// Resolved execution context: API access and output settings.
@@ -160,7 +173,18 @@ async fn run() -> Result<()> {
         Command::Completion { shell } => {
             let mut cmd = Cli::command();
             let name = cmd.get_name().to_string();
-            clap_complete::generate(shell, &mut cmd, name, &mut std::io::stdout());
+            let mut out = std::io::stdout();
+            // Nushell's generator lives in its own crate; the rest are clap_complete's.
+            match shell {
+                CompletionShell::Bash => clap_complete::generate(Shell::Bash, &mut cmd, name, &mut out),
+                CompletionShell::Zsh => clap_complete::generate(Shell::Zsh, &mut cmd, name, &mut out),
+                CompletionShell::Fish => clap_complete::generate(Shell::Fish, &mut cmd, name, &mut out),
+                CompletionShell::Powershell => {
+                    clap_complete::generate(Shell::PowerShell, &mut cmd, name, &mut out)
+                }
+                CompletionShell::Elvish => clap_complete::generate(Shell::Elvish, &mut cmd, name, &mut out),
+                CompletionShell::Nushell => clap_complete::generate(Nushell, &mut cmd, name, &mut out),
+            }
             Ok(())
         }
     }
