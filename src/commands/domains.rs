@@ -6,7 +6,7 @@ use serde_json::json;
 
 use crate::commands::{confirm, resolve_domain};
 use crate::i18n::{self, M};
-use crate::output::{print_json, print_table, success, OutputFormat};
+use crate::output::{info, print_json, print_table, success, warn, OutputFormat};
 use crate::Context;
 
 #[derive(Subcommand)]
@@ -105,7 +105,30 @@ pub async fn run(ctx: &Context, cmd: DomainsCommand) -> Result<()> {
         DomainsCommand::Check { name } => {
             let domain = resolve_domain(&client, &name).await?;
             let result = client.post_empty(&format!("domains/{}/check-delegation", domain.id)).await?;
-            print_json(&result)?;
+            if ctx.output == OutputFormat::Json {
+                return print_json(&result);
+            }
+            let check: crate::api::models::DelegationCheck = serde_json::from_value(result)?;
+            match check.delegated {
+                Some(true) => success(&i18n::f(M::DelegationOk, &[("name", &domain.name)])),
+                Some(false) => {
+                    warn(&i18n::f(M::DelegationNotDelegated, &[("name", &domain.name)]));
+                    if !check.current_ns.is_empty() {
+                        info(&i18n::f(M::DelegationCurrentNs, &[("ns", &check.current_ns.join(", "))]));
+                    }
+                    if !check.missing_ns.is_empty() {
+                        warn(&i18n::f(M::DelegationMissingNs, &[("ns", &check.missing_ns.join(", "))]));
+                    }
+                    if !check.extra_ns.is_empty() {
+                        warn(&i18n::f(M::DelegationExtraNs, &[("ns", &check.extra_ns.join(", "))]));
+                    }
+                    if check.missing_ns.is_empty() && check.extra_ns.is_empty() {
+                        warn(&i18n::tr(M::DelegationNoNs));
+                    }
+                    info(&i18n::tr(M::DelegationPropagationNote));
+                }
+                None => info(&i18n::tr(M::DelegationUnknown)),
+            }
         }
     }
     Ok(())

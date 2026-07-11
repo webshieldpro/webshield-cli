@@ -44,3 +44,7 @@ pub fn success(msg: &str) {
 pub fn info(msg: &str) {
     eprintln!("{}", style(msg).dim());
 }
+
+pub fn warn(msg: &str) {
+    eprintln!("{} {}", style("!").yellow().bold(), msg);
+}

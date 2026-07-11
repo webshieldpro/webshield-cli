@@ -130,6 +130,14 @@ pub enum M {
     DomainDeleted,
     DomainNotFound,
     ConfirmDeleteDomain,
+    DelegationOk,
+    DelegationNotDelegated,
+    DelegationCurrentNs,
+    DelegationMissingNs,
+    DelegationExtraNs,
+    DelegationNoNs,
+    DelegationUnknown,
+    DelegationPropagationNote,
     // dns
     HName,
     HType,
@@ -281,6 +289,38 @@ impl M {
             ConfirmDeleteDomain => (
                 "Delete domain `{name}` and its zone? This is irreversible.",
                 "Удалить домен `{name}` и его зону? Это необратимо.",
+            ),
+            DelegationOk => (
+                "domain `{name}` is delegated to WebShield.",
+                "домен `{name}` делегирован на WebShield.",
+            ),
+            DelegationNotDelegated => (
+                "domain `{name}` is not delegated.",
+                "домен `{name}` не делегирован.",
+            ),
+            DelegationCurrentNs => (
+                "current NS at the parent zone: {ns}",
+                "текущие NS в родительской зоне: {ns}",
+            ),
+            DelegationMissingNs => (
+                "WebShield nameservers are missing at the registrar: {ns}",
+                "у регистратора не указаны NS-серверы WebShield: {ns}",
+            ),
+            DelegationExtraNs => (
+                "remove the other nameservers at the registrar: {ns}",
+                "уберите у регистратора посторонние NS-серверы: {ns}",
+            ),
+            DelegationNoNs => (
+                "no NS delegation found in the parent zone.",
+                "NS-делегирование в родительской зоне не найдено.",
+            ),
+            DelegationUnknown => (
+                "delegation status is unknown.",
+                "статус делегирования неизвестен.",
+            ),
+            DelegationPropagationNote => (
+                "nameserver changes at the registrar can take up to 48 hours to propagate.",
+                "изменения NS у регистратора могут применяться до 48 часов.",
             ),
 
             HName => ("Name", "Имя"),
