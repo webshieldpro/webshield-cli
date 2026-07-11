@@ -17,9 +17,17 @@ BASE="${WEBSHIELD_CLI_BASE_URL:-https://github.com/$REPO/releases/download}"
 VERSION="${WEBSHIELD_CLI_VERSION:-${1:-}}"
 BINDIR="${WEBSHIELD_CLI_BINDIR:-$HOME/.local/bin}"
 
+# GitHub's release CDN is anycast and individual IPs intermittently stall;
+# retry on a fresh connection instead of hanging: fail fast on connect,
+# abort a transfer stuck below 1 KB/s for 30s and let --retry kick in.
+fetch() {
+  curl -fL --retry 5 --retry-all-errors --connect-timeout 10 \
+    --speed-limit 1024 --speed-time 30 "$@"
+}
+
 # Without an explicit version, take the latest release tag from the GitHub API.
 if [ -z "$VERSION" ]; then
-  VERSION="$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \
+  VERSION="$(fetch -sS "https://api.github.com/repos/$REPO/releases/latest" \
     | sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p' | head -1)"
   if [ -z "$VERSION" ]; then
     echo "failed to determine the latest version; set WEBSHIELD_CLI_VERSION=X.Y.Z" >&2
@@ -46,10 +54,10 @@ url="$BASE/$TAG/$asset"
 
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 echo "Downloading $url"
-curl -fSL "$url" -o "$tmp/$asset"
+fetch -S "$url" -o "$tmp/$asset"
 
 # Verify the checksum when SHA256SUMS is available.
-if curl -fsSL "$BASE/$TAG/SHA256SUMS" -o "$tmp/SHA256SUMS" 2>/dev/null; then
+if fetch -sS "$BASE/$TAG/SHA256SUMS" -o "$tmp/SHA256SUMS" 2>/dev/null; then
   ( cd "$tmp" && grep " ./$asset\$\| $asset\$" SHA256SUMS | sed "s| \./| |" | sha256sum -c - ) \
     || { echo "checksum mismatch" >&2; exit 1; }
 fi
