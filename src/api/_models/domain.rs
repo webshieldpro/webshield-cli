@@ -20,7 +20,7 @@ pub struct DomainInner {
 impl MakeReq for DomainInner {
     type Params = ();
 
-    fn get_url(_: Self::Params) -> impl AsRef<str> {
+    fn get_url(_: ()) -> impl AsRef<str> {
         "domains"
     }
 
@@ -37,7 +37,7 @@ pub struct Domain {
 impl MakeReq for Domain {
     type Params = ();
 
-    fn get_url(_: Self::Params) -> impl AsRef<str> {
+    fn get_url(_: ()) -> impl AsRef<str> {
         "domains"
     }
 

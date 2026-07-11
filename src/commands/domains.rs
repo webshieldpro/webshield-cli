@@ -177,7 +177,7 @@ pub async fn run(ctx: &Context, cmd: DomainsCommand) -> Result<()> {
 /// Resolves the user's domain by name (case-insensitive, trailing dot ignored).
 pub async fn resolve_domain(client: &Client, name: &str) -> Result<DomainInner> {
     let needle = name.trim().trim_end_matches('.').to_lowercase();
-    // let domains: Vec<models::Domain> = client.list_all("domains").await?;
+
     let domains: Domain = client.n_send(()).await?;
     domains
         .results

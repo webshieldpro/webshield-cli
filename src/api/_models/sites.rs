@@ -2,7 +2,7 @@
 
 use crate::api::get_url::MakeReq;
 use reqwest::Method;
-use serde::{Deserialize};
+use serde::Deserialize;
 
 #[derive(Deserialize)]
 pub struct SitesListInner {
@@ -18,7 +18,6 @@ pub struct SitesListInner {
     pub size_bytes: Option<i64>,
 }
 
-
 impl MakeReq for SitesListInner {
     type Params = ();
 
@@ -30,7 +29,6 @@ impl MakeReq for SitesListInner {
         Method::POST
     }
 }
-
 
 #[derive(Deserialize)]
 pub struct SitesList {
@@ -49,11 +47,10 @@ impl MakeReq for SitesList {
     }
 }
 
-
 #[derive(Debug, Deserialize)]
 pub struct FilesResponseSite {
     #[serde(default)]
-    pub files: Vec<crate::api::models::ServerFile>,
+    pub files: Vec<ServerFileSite>,
 }
 
 impl MakeReq for FilesResponseSite {

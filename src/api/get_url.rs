@@ -6,8 +6,4 @@ pub trait MakeReq {
     fn get_url(params: Self::Params) -> impl AsRef<str>;
 
     fn method() -> Method;
-
-    fn print(&self) {
-        println!("not implemented");
-    }
 }

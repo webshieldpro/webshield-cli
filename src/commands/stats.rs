@@ -1,14 +1,14 @@
 //! Domain statistics and protection (scope `stats`, read-only).
 
+use crate::api::Client;
+use crate::api::_models::stats::{BanStats, SummaryStats};
+use crate::commands::domains::resolve_domain;
+use crate::i18n::{self, M};
+use crate::output::print_table;
+use crate::Context;
 use anyhow::Result;
 use clap::Subcommand;
 use serde_json::Value;
-
-use crate::api::Client;
-use crate::commands::domains::resolve_domain;
-use crate::i18n::{self, M};
-use crate::output::{print_json, print_table};
-use crate::Context;
 
 #[derive(Subcommand)]
 pub enum StatsCommand {
@@ -38,28 +38,25 @@ pub async fn run(ctx: &Context, cmd: StatsCommand) -> Result<()> {
 async fn summary(client: &Client, domain: &str, range: &str) -> Result<()> {
     let d = resolve_domain(client, domain).await?;
     // The summary is complex (charts and aggregates) — print it as JSON.
-    let payload: Value = client
-        .get_json(&format!("domains/{}/stats?range={range}&step=1h", d.id))
-        .await?;
-    print_json(&payload)
+    let payload: SummaryStats = client.n_send((d.id, range)).await?;
+
+    println!("{:?}", payload);
+    Ok(())
 }
 
 async fn bans(client: &Client, domain: &str, range: &str) -> Result<()> {
     let d = resolve_domain(client, domain).await?;
-    let payload: Value = client
-        .get_json(&format!("domains/{}/protection/bans?range={range}", d.id))
-        .await?;
 
-    let bans = payload
-        .get("bans")
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default();
-    if bans.is_empty() {
+    let payload: BanStats = client.n_send((d.id, range)).await?;
+
+    if payload.bans.is_empty() {
         crate::output::info(i18n::tr(M::NoBans));
         return Ok(());
     }
-    let rows = bans
+
+    // TODO impl Display
+    let rows = payload
+        .bans
         .iter()
         .map(|b| {
             let s = |k: &str| b.get(k).map(fmt_value).unwrap_or_default();
@@ -72,6 +69,7 @@ async fn bans(client: &Client, domain: &str, range: &str) -> Result<()> {
             ]
         })
         .collect();
+
     print_table(
         &[
             i18n::tr(M::HIp),

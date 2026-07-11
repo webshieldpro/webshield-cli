@@ -2,5 +2,5 @@
 pub mod sites;
 
 pub mod domain;
-mod stats;
+pub mod stats;
 
