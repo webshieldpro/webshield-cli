@@ -166,21 +166,32 @@ fn extract_detail(body: &str) -> Option<String> {
     // A {field: [messages]} map — join into "field: message".
     let mut parts = Vec::new();
     for (field, errs) in obj {
-        let joined = match errs {
-            Value::Array(items) => items
-                .iter()
-                .filter_map(|v| v.as_str().map(str::to_string))
-                .collect::<Vec<_>>()
-                .join("; "),
-            Value::String(s) => s.clone(),
-            other => other.to_string(),
-        };
+        let joined = flatten_errors(errs);
+        if joined.is_empty() {
+            continue;
+        }
         parts.push(format!("{field}: {joined}"));
     }
     if parts.is_empty() {
         None
     } else {
         Some(parts.join(" | "))
+    }
+}
+
+/// Recursively collects message strings from a DRF error value. Nested
+/// serializers produce structures like {"rrsets": [{"non_field_errors": ["…"]}]}
+/// where valid items appear as empty objects — those are skipped.
+fn flatten_errors(value: &Value) -> String {
+    let join = |it: &mut dyn Iterator<Item = String>| {
+        it.filter(|s| !s.is_empty()).collect::<Vec<_>>().join("; ")
+    };
+    match value {
+        Value::String(s) => s.clone(),
+        Value::Array(items) => join(&mut items.iter().map(flatten_errors)),
+        Value::Object(map) => join(&mut map.values().map(flatten_errors)),
+        Value::Null => String::new(),
+        other => other.to_string(),
     }
 }
 
@@ -218,6 +229,20 @@ mod tests {
         assert_eq!(
             got,
             Some("name: This field is required.; Too short.".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_detail_unwraps_nested_serializer_errors() {
+        // Bulk rrsets validation: valid items are empty objects, only messages survive.
+        let got = extract_detail(
+            r#"{"rrsets": [{}, {"non_field_errors": ["For CNAME/NS/PTR the target must be a FQDN ending with a dot."]}]}"#,
+        );
+        assert_eq!(
+            got,
+            Some(
+                "rrsets: For CNAME/NS/PTR the target must be a FQDN ending with a dot.".to_string()
+            )
         );
     }
 

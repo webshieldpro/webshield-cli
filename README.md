@@ -73,6 +73,7 @@ webshield dns add example.com www A 203.0.113.10      # add a value
 webshield dns set example.com @ A 203.0.113.10        # set exactly this value
 webshield dns remove example.com www A 203.0.113.10   # remove a single value
 webshield dns remove example.com www TXT              # remove the whole set
+webshield dns add example.com www CNAME target.example.com  # trailing dot added automatically
 webshield dns dnssec enable example.com
 
 # Static sites
