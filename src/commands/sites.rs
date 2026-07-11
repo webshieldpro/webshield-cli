@@ -79,7 +79,9 @@ pub async fn run(ctx: &Context, cmd: SitesCommand) -> Result<()> {
         SitesCommand::Files { hostname } => files(ctx, &client, &hostname).await,
         SitesCommand::Disable { hostname } => {
             let site = resolve_site(&client, &hostname).await?;
-            client.post_empty(&format!("static-sites/{}/disable", site.id)).await?;
+            client
+                .post_empty(&format!("static-sites/{}/disable", site.id))
+                .await?;
             success(&i18n::f(M::SiteDisabled, &[("host", &site.hostname)]));
             Ok(())
         }
@@ -131,7 +133,10 @@ async fn create(client: &Client, hostname: &str, domain: &str) -> Result<()> {
     let d = resolve_domain(client, domain).await?;
     let body = json!({ "hostname": hostname, "domain_id": d.id });
     let site: StaticSite = client.post_json("static-sites", &body).await?;
-    success(&i18n::f(M::SiteCreated, &[("host", &site.hostname), ("id", &site.id.to_string())]));
+    success(&i18n::f(
+        M::SiteCreated,
+        &[("host", &site.hostname), ("id", &site.id.to_string())],
+    ));
     Ok(())
 }
 
@@ -159,7 +164,10 @@ async fn publish(client: &Client, site_id: i64, dir: &Path, dry_run: bool) -> Re
     let root = std::fs::canonicalize(dir)
         .with_context(|| i18n::f(M::DirNotFound, &[("path", &dir.display().to_string())]))?;
     if !root.is_dir() {
-        bail!(i18n::f(M::NotADir, &[("path", &root.display().to_string())]));
+        bail!(i18n::f(
+            M::NotADir,
+            &[("path", &root.display().to_string())]
+        ));
     }
 
     // 1. Current draft state on the server: path -> etag.
@@ -183,7 +191,11 @@ async fn publish(client: &Client, site_id: i64, dir: &Path, dry_run: bool) -> Re
         .map(|(rel, (abs, _))| (rel.clone(), abs.clone()))
         .collect();
     to_upload.sort();
-    let mut to_delete: Vec<String> = server.keys().filter(|k| !local.contains_key(*k)).cloned().collect();
+    let mut to_delete: Vec<String> = server
+        .keys()
+        .filter(|k| !local.contains_key(*k))
+        .cloned()
+        .collect();
     to_delete.sort();
 
     let unchanged = local.len() - to_upload.len();
@@ -219,7 +231,9 @@ async fn publish(client: &Client, site_id: i64, dir: &Path, dry_run: bool) -> Re
         delete_all(client, site_id, &to_delete).await?;
     }
     // 6. Publish the snapshot.
-    client.post_empty(&format!("static-sites/{site_id}/publish")).await?;
+    client
+        .post_empty(&format!("static-sites/{site_id}/publish"))
+        .await?;
     success(i18n::tr(M::Published));
     Ok(())
 }
@@ -331,7 +345,9 @@ async fn upload_batch(client: &Client, site_id: i64, batch: Vec<(String, PathBuf
         let data = tokio::fs::read(abs)
             .await
             .with_context(|| format!("failed to read {}", abs.display()))?;
-        let ctype = mime_guess::from_path(rel).first_or_octet_stream().to_string();
+        let ctype = mime_guess::from_path(rel)
+            .first_or_octet_stream()
+            .to_string();
         let filename = rel.rsplit('/').next().unwrap_or(rel).to_string();
         // Order matters: the server pairs paths[i] with files[i] by index.
         form = form.text("paths", rel.clone());
@@ -352,7 +368,10 @@ async fn delete_all(client: &Client, site_id: i64, paths: &[String]) -> Result<(
             .post_json(&format!("static-sites/{site_id}/delete-files"), &body)
             .await?;
     }
-    crate::output::info(&i18n::f(M::DeletedFiles, &[("count", &paths.len().to_string())]));
+    crate::output::info(&i18n::f(
+        M::DeletedFiles,
+        &[("count", &paths.len().to_string())],
+    ));
     Ok(())
 }
 

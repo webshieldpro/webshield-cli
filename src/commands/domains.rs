@@ -51,19 +51,30 @@ pub async fn run(ctx: &Context, cmd: DomainsCommand) -> Result<()> {
                             Some(false) => no.into(),
                             None => dash.into(),
                         },
-                        d.current_tariff.as_ref().map(|t| t.name.clone()).unwrap_or_else(|| dash.into()),
+                        d.current_tariff
+                            .as_ref()
+                            .map(|t| t.name.clone())
+                            .unwrap_or_else(|| dash.into()),
                     ]
                 })
                 .collect();
             print_table(
-                &[i18n::tr(M::HId), i18n::tr(M::HDomain), i18n::tr(M::HDelegated), i18n::tr(M::HTariff)],
+                &[
+                    i18n::tr(M::HId),
+                    i18n::tr(M::HDomain),
+                    i18n::tr(M::HDelegated),
+                    i18n::tr(M::HTariff),
+                ],
                 rows,
             );
         }
         DomainsCommand::Add { name, import } => {
             let body = json!({ "name": name, "import_method": import });
             let created: crate::api::models::Domain = client.post_json("domains", &body).await?;
-            success(&i18n::f(M::DomainCreated, &[("name", &created.name), ("id", &created.id.to_string())]));
+            success(&i18n::f(
+                M::DomainCreated,
+                &[("name", &created.name), ("id", &created.id.to_string())],
+            ));
             if ctx.output == OutputFormat::Json {
                 return print_json(&created);
             }
@@ -91,20 +102,29 @@ pub async fn run(ctx: &Context, cmd: DomainsCommand) -> Result<()> {
                     ],
                     vec![
                         i18n::tr(M::HTariff).into(),
-                        domain.current_tariff.as_ref().map(|t| t.name.clone()).unwrap_or_else(|| dash.into()),
+                        domain
+                            .current_tariff
+                            .as_ref()
+                            .map(|t| t.name.clone())
+                            .unwrap_or_else(|| dash.into()),
                     ],
                 ],
             );
         }
         DomainsCommand::Remove { name } => {
             let domain = resolve_domain(&client, &name).await?;
-            confirm(ctx.yes, &i18n::f(M::ConfirmDeleteDomain, &[("name", &domain.name)]))?;
+            confirm(
+                ctx.yes,
+                &i18n::f(M::ConfirmDeleteDomain, &[("name", &domain.name)]),
+            )?;
             client.delete(&format!("domains/{}", domain.id)).await?;
             success(&i18n::f(M::DomainDeleted, &[("name", &domain.name)]));
         }
         DomainsCommand::Check { name } => {
             let domain = resolve_domain(&client, &name).await?;
-            let result = client.post_empty(&format!("domains/{}/check-delegation", domain.id)).await?;
+            let result = client
+                .post_empty(&format!("domains/{}/check-delegation", domain.id))
+                .await?;
             if ctx.output == OutputFormat::Json {
                 return print_json(&result);
             }
@@ -112,22 +132,34 @@ pub async fn run(ctx: &Context, cmd: DomainsCommand) -> Result<()> {
             match check.delegated {
                 Some(true) => success(&i18n::f(M::DelegationOk, &[("name", &domain.name)])),
                 Some(false) => {
-                    warn(&i18n::f(M::DelegationNotDelegated, &[("name", &domain.name)]));
+                    warn(&i18n::f(
+                        M::DelegationNotDelegated,
+                        &[("name", &domain.name)],
+                    ));
                     if !check.current_ns.is_empty() {
-                        info(&i18n::f(M::DelegationCurrentNs, &[("ns", &check.current_ns.join(", "))]));
+                        info(&i18n::f(
+                            M::DelegationCurrentNs,
+                            &[("ns", &check.current_ns.join(", "))],
+                        ));
                     }
                     if !check.missing_ns.is_empty() {
-                        warn(&i18n::f(M::DelegationMissingNs, &[("ns", &check.missing_ns.join(", "))]));
+                        warn(&i18n::f(
+                            M::DelegationMissingNs,
+                            &[("ns", &check.missing_ns.join(", "))],
+                        ));
                     }
                     if !check.extra_ns.is_empty() {
-                        warn(&i18n::f(M::DelegationExtraNs, &[("ns", &check.extra_ns.join(", "))]));
+                        warn(&i18n::f(
+                            M::DelegationExtraNs,
+                            &[("ns", &check.extra_ns.join(", "))],
+                        ));
                     }
                     if check.missing_ns.is_empty() && check.extra_ns.is_empty() {
-                        warn(&i18n::tr(M::DelegationNoNs));
+                        warn(i18n::tr(M::DelegationNoNs));
                     }
-                    info(&i18n::tr(M::DelegationPropagationNote));
+                    info(i18n::tr(M::DelegationPropagationNote));
                 }
-                None => info(&i18n::tr(M::DelegationUnknown)),
+                None => info(i18n::tr(M::DelegationUnknown)),
             }
         }
     }

@@ -50,7 +50,11 @@ async fn bans(client: &Client, domain: &str, range: &str) -> Result<()> {
         .get_json(&format!("domains/{}/protection/bans?range={range}", d.id))
         .await?;
 
-    let bans = payload.get("bans").and_then(Value::as_array).cloned().unwrap_or_default();
+    let bans = payload
+        .get("bans")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     if bans.is_empty() {
         crate::output::info(i18n::tr(M::NoBans));
         return Ok(());
@@ -59,7 +63,13 @@ async fn bans(client: &Client, domain: &str, range: &str) -> Result<()> {
         .iter()
         .map(|b| {
             let s = |k: &str| b.get(k).map(fmt_value).unwrap_or_default();
-            vec![s("ip"), s("type"), s("reason"), s("last_seen"), s("requests")]
+            vec![
+                s("ip"),
+                s("type"),
+                s("reason"),
+                s("last_seen"),
+                s("requests"),
+            ]
         })
         .collect();
     print_table(

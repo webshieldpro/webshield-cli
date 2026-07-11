@@ -87,15 +87,26 @@ pub async fn run(ctx: &Context, cmd: DnsCommand) -> Result<()> {
     let client = ctx.client()?;
     match cmd {
         DnsCommand::List { domain, rr_type } => list(ctx, &client, &domain, rr_type).await,
-        DnsCommand::Add { domain, name, rr_type, value, ttl } => {
-            change(&client, &domain, &name, &rr_type, &value, ttl, Op::Add).await
-        }
-        DnsCommand::Set { domain, name, rr_type, value, ttl } => {
-            change(&client, &domain, &name, &rr_type, &value, ttl, Op::Set).await
-        }
-        DnsCommand::Remove { domain, name, rr_type, value } => {
-            change(&client, &domain, &name, &rr_type, &value, 0, Op::Remove).await
-        }
+        DnsCommand::Add {
+            domain,
+            name,
+            rr_type,
+            value,
+            ttl,
+        } => change(&client, &domain, &name, &rr_type, &value, ttl, Op::Add).await,
+        DnsCommand::Set {
+            domain,
+            name,
+            rr_type,
+            value,
+            ttl,
+        } => change(&client, &domain, &name, &rr_type, &value, ttl, Op::Set).await,
+        DnsCommand::Remove {
+            domain,
+            name,
+            rr_type,
+            value,
+        } => change(&client, &domain, &name, &rr_type, &value, 0, Op::Remove).await,
         DnsCommand::Dnssec(sub) => dnssec(&client, sub).await,
     }
 }
@@ -107,12 +118,16 @@ enum Op {
 }
 
 async fn fetch_records(client: &Client, domain_id: i64) -> Result<RecordsResponse> {
-    client.get_json(&format!("domains/{domain_id}/records")).await
+    client
+        .get_json(&format!("domains/{domain_id}/records"))
+        .await
 }
 
 async fn post_rrset(client: &Client, domain_id: i64, rrset: Value) -> Result<()> {
     let body = json!({ "rrsets": [rrset] });
-    let _: Value = client.post_json(&format!("domains/{domain_id}/records"), &body).await?;
+    let _: Value = client
+        .post_json(&format!("domains/{domain_id}/records"), &body)
+        .await?;
     Ok(())
 }
 
@@ -133,7 +148,8 @@ fn find_rrset<'a>(records: &'a [RRSet], fqdn: &str, rr_type: &str) -> Option<&'a
     let want = fqdn.trim_end_matches('.');
     let ty = rr_type.to_uppercase();
     records.iter().find(|r| {
-        r.name.trim_end_matches('.').eq_ignore_ascii_case(want) && r.rr_type.eq_ignore_ascii_case(&ty)
+        r.name.trim_end_matches('.').eq_ignore_ascii_case(want)
+            && r.rr_type.eq_ignore_ascii_case(&ty)
     })
 }
 
@@ -144,7 +160,11 @@ async fn list(ctx: &Context, client: &Client, domain: &str, rr_type: Option<Stri
     let rrsets: Vec<&RRSet> = resp
         .rrsets
         .iter()
-        .filter(|r| filter.as_ref().is_none_or(|f| r.rr_type.eq_ignore_ascii_case(f)))
+        .filter(|r| {
+            filter
+                .as_ref()
+                .is_none_or(|f| r.rr_type.eq_ignore_ascii_case(f))
+        })
         .collect();
 
     if ctx.output == OutputFormat::Json {
@@ -154,7 +174,12 @@ async fn list(ctx: &Context, client: &Client, domain: &str, rr_type: Option<Stri
     let rows = rrsets
         .iter()
         .map(|r| {
-            let values = r.records.iter().map(|rec| rec.content.clone()).collect::<Vec<_>>().join(", ");
+            let values = r
+                .records
+                .iter()
+                .map(|rec| rec.content.clone())
+                .collect::<Vec<_>>()
+                .join(", ");
             vec![
                 r.name.clone(),
                 r.rr_type.clone(),
@@ -175,8 +200,14 @@ async fn list(ctx: &Context, client: &Client, domain: &str, rr_type: Option<Stri
         rows,
     );
     if let Some(used) = resp.records_used {
-        let limit = resp.records_limit.map(|l| l.to_string()).unwrap_or_else(|| "∞".into());
-        crate::output::info(&i18n::f(M::RecordsCount, &[("used", &used.to_string()), ("limit", &limit)]));
+        let limit = resp
+            .records_limit
+            .map(|l| l.to_string())
+            .unwrap_or_else(|| "∞".into());
+        crate::output::info(&i18n::f(
+            M::RecordsCount,
+            &[("used", &used.to_string()), ("limit", &limit)],
+        ));
     }
     Ok(())
 }
@@ -193,7 +224,8 @@ async fn change(
 ) -> Result<()> {
     let d = resolve_domain(client, domain).await?;
     let ty = rr_type.to_uppercase();
-    let items = |vals: &[String]| -> Vec<Value> { vals.iter().map(|v| json!({ "content": v })).collect() };
+    let items =
+        |vals: &[String]| -> Vec<Value> { vals.iter().map(|v| json!({ "content": v })).collect() };
 
     let (msg, count) = match op {
         Op::Add => {
@@ -208,7 +240,10 @@ async fn change(
                 .map(|r| r.records.iter().map(|rec| rec.content.clone()).collect())
                 .unwrap_or_default();
             // Remove values that are absent from the target set.
-            let stale: Vec<String> = current.into_iter().filter(|c| !values.contains(c)).collect();
+            let stale: Vec<String> = current
+                .into_iter()
+                .filter(|c| !values.contains(c))
+                .collect();
             if !stale.is_empty() {
                 let del = json!({ "name": name, "type": ty, "changetype": "DELETE", "records": items(&stale) });
                 post_rrset(client, d.id, del).await?;
@@ -229,7 +264,10 @@ async fn change(
                 values.to_vec()
             };
             if targets.is_empty() {
-                bail!(i18n::f(M::NothingToDelete, &[("name", name), ("type", &ty)]));
+                bail!(i18n::f(
+                    M::NothingToDelete,
+                    &[("name", name), ("type", &ty)]
+                ));
             }
             let del = json!({ "name": name, "type": ty, "changetype": "DELETE", "records": items(&targets) });
             post_rrset(client, d.id, del).await?;
@@ -239,7 +277,12 @@ async fn change(
 
     success(&i18n::f(
         msg,
-        &[("name", name), ("type", &ty), ("domain", &d.name), ("count", &count.to_string())],
+        &[
+            ("name", name),
+            ("type", &ty),
+            ("domain", &d.name),
+            ("count", &count.to_string()),
+        ],
     ));
     Ok(())
 }
@@ -253,7 +296,9 @@ async fn dnssec(client: &Client, cmd: DnssecCommand) -> Result<()> {
         }
         DnssecCommand::Enable { domain } => {
             let d = resolve_domain(client, &domain).await?;
-            let result = client.post_empty(&format!("domains/{}/dnssec", d.id)).await?;
+            let result = client
+                .post_empty(&format!("domains/{}/dnssec", d.id))
+                .await?;
             success(i18n::tr(M::DnssecEnabled));
             print_json(&result)
         }

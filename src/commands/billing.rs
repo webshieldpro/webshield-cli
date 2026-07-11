@@ -69,7 +69,9 @@ async fn usage(ctx: &Context, client: &Client, domain: &str) -> Result<()> {
 
 async fn tariffs(ctx: &Context, client: &Client, domain: &str) -> Result<()> {
     let d = resolve_domain(client, domain).await?;
-    let payload: Value = client.get_json(&format!("domains/{}/tariffs", d.id)).await?;
+    let payload: Value = client
+        .get_json(&format!("domains/{}/tariffs", d.id))
+        .await?;
     if ctx.output == OutputFormat::Json {
         return print_json(&payload);
     }
@@ -78,7 +80,11 @@ async fn tariffs(ctx: &Context, client: &Client, domain: &str) -> Result<()> {
         .and_then(|t| t.get("name"))
         .and_then(Value::as_str)
         .unwrap_or("");
-    let list = payload.get("tariffs").and_then(Value::as_array).cloned().unwrap_or_default();
+    let list = payload
+        .get("tariffs")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     let rows = list
         .iter()
         .map(|t| {
@@ -89,7 +95,13 @@ async fn tariffs(ctx: &Context, client: &Client, domain: &str) -> Result<()> {
         })
         .collect();
     print_table(
-        &["", i18n::tr(M::HName), "price", i18n::tr(M::HCurrency), "period"],
+        &[
+            "",
+            i18n::tr(M::HName),
+            "price",
+            i18n::tr(M::HCurrency),
+            "period",
+        ],
         rows,
     );
     Ok(())
@@ -99,7 +111,12 @@ fn fmt_value(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),
         Value::Null => String::new(),
-        Value::Bool(b) => (if *b { i18n::tr(M::Yes) } else { i18n::tr(M::No) }).to_string(),
+        Value::Bool(b) => (if *b {
+            i18n::tr(M::Yes)
+        } else {
+            i18n::tr(M::No)
+        })
+        .to_string(),
         other => other.to_string(),
     }
 }

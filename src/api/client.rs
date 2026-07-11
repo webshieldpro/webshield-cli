@@ -84,18 +84,21 @@ impl Client {
         let mut out = Vec::new();
         let mut next_url = self.url(path);
         loop {
-            let rb = self.http.request(Method::GET, &next_url).bearer_auth(&self.token);
+            let rb = self
+                .http
+                .request(Method::GET, &next_url)
+                .bearer_auth(&self.token);
             let value = self.send_value(rb).await?;
             match value {
                 Value::Array(_) => {
-                    let items: Vec<T> = serde_json::from_value(value)
-                        .context("failed to parse the list")?;
+                    let items: Vec<T> =
+                        serde_json::from_value(value).context("failed to parse the list")?;
                     out.extend(items);
                     break;
                 }
                 Value::Object(_) => {
-                    let page: Page<T> = serde_json::from_value(value)
-                        .context("failed to parse the list page")?;
+                    let page: Page<T> =
+                        serde_json::from_value(value).context("failed to parse the list page")?;
                     out.extend(page.results);
                     match page.next {
                         Some(url) if !url.is_empty() => next_url = url,
@@ -119,12 +122,19 @@ async fn check_status(resp: Response) -> Result<Response> {
     let detail = extract_detail(&body).unwrap_or_else(|| body.clone());
     match status {
         StatusCode::UNAUTHORIZED => {
-            bail!("401 Unauthorized: {detail}\n{}", i18n::tr(M::ErrUnauthorized))
+            bail!(
+                "401 Unauthorized: {detail}\n{}",
+                i18n::tr(M::ErrUnauthorized)
+            )
         }
         StatusCode::FORBIDDEN => {
             bail!("403 Forbidden: {detail}\n{}", i18n::tr(M::ErrForbidden))
         }
-        _ => Err(anyhow!("{} {}: {detail}", status.as_u16(), status.canonical_reason().unwrap_or(""))),
+        _ => Err(anyhow!(
+            "{} {}: {detail}",
+            status.as_u16(),
+            status.canonical_reason().unwrap_or("")
+        )),
     }
 }
 

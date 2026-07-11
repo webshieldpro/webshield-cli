@@ -489,7 +489,10 @@ fn localize_cmd(mut cmd: Command, parent: &str) -> Command {
     }
 
     // Arguments (including the auto `help`/`version`).
-    let arg_ids: Vec<String> = cmd.get_arguments().map(|a| a.get_id().to_string()).collect();
+    let arg_ids: Vec<String> = cmd
+        .get_arguments()
+        .map(|a| a.get_id().to_string())
+        .collect();
     for id in arg_ids {
         if let Some(help) = arg_ru(&rel, &id) {
             // The built-in `help`/`version` have their own default long_help — override it
@@ -507,10 +510,17 @@ fn localize_cmd(mut cmd: Command, parent: &str) -> Command {
     }
 
     // Recurse into subcommands.
-    let sub_names: Vec<String> = cmd.get_subcommands().map(|c| c.get_name().to_string()).collect();
+    let sub_names: Vec<String> = cmd
+        .get_subcommands()
+        .map(|c| c.get_name().to_string())
+        .collect();
     for sn in sub_names {
         // For children of the root the parent path = child name (the "\0" marker = root).
-        let child_parent = if rel.is_empty() { "\0".to_string() } else { rel.clone() };
+        let child_parent = if rel.is_empty() {
+            "\0".to_string()
+        } else {
+            rel.clone()
+        };
         cmd = cmd.mut_subcommand(&sn, move |c| localize_cmd(c, &child_parent));
     }
     cmd
@@ -541,7 +551,9 @@ fn cmd_about_ru(rel: &str) -> Option<&'static str> {
         "dns dnssec" => "Управление DNSSEC.",
         "dns dnssec status" => "Статус DNSSEC и DS-записи для регистратора.",
         "dns dnssec enable" => "Включить онлайн-подписывание зоны.",
-        "dns dnssec disable" => "Выключить DNSSEC (заблокировано при живом DS у родителя; см. --force).",
+        "dns dnssec disable" => {
+            "Выключить DNSSEC (заблокировано при живом DS у родителя; см. --force)."
+        }
         "sites" => tr(M::CmdSites),
         "sites list" => "Список статических сайтов.",
         "sites create" => "Создать статический сайт на хосте.",
@@ -569,11 +581,15 @@ fn cmd_about_ru(rel: &str) -> Option<&'static str> {
 fn arg_ru(rel: &str, id: &str) -> Option<&'static str> {
     // Context-dependent.
     match (rel, id) {
-        ("auth login", "token") => return Some("Токен wsk_… (спросим интерактивно, если не задан)"),
+        ("auth login", "token") => {
+            return Some("Токен wsk_… (спросим интерактивно, если не задан)")
+        }
         ("auth login", "api_url") => return Some("Базовый URL API для профиля"),
         ("sites create", "domain") => return Some("Домен-владелец"),
         ("proxy set", "domain") => return Some("Домен-владелец (обязателен при создании)"),
-        ("dns remove", "value") => return Some("Конкретные значения для удаления (иначе удаляется весь набор)"),
+        ("dns remove", "value") => {
+            return Some("Конкретные значения для удаления (иначе удаляется весь набор)")
+        }
         _ => {}
     }
     if rel.starts_with("domains ") && id == "name" {

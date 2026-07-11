@@ -19,7 +19,12 @@ use i18n::Lang;
 use output::OutputFormat;
 
 #[derive(Parser)]
-#[command(name = "webshield", version, about = "WebShield command-line client", propagate_version = true)]
+#[command(
+    name = "webshield",
+    version,
+    about = "WebShield command-line client",
+    propagate_version = true
+)]
 struct Cli {
     /// Config profile (defaults to the active one from config.toml).
     #[arg(long, short = 'p', global = true, env = "WS_PROFILE")]
@@ -144,7 +149,10 @@ async fn main() {
     i18n::set(i18n::resolve(i18n::prescan_lang(&raw).as_deref()));
 
     if let Err(err) = run().await {
-        eprintln!("{} {err:#}", console::style(i18n::tr(i18n::M::ErrorPrefix)).red().bold());
+        eprintln!(
+            "{} {err:#}",
+            console::style(i18n::tr(i18n::M::ErrorPrefix)).red().bold()
+        );
         std::process::exit(1);
     }
 }
@@ -176,14 +184,24 @@ async fn run() -> Result<()> {
             let mut out = std::io::stdout();
             // Nushell's generator lives in its own crate; the rest are clap_complete's.
             match shell {
-                CompletionShell::Bash => clap_complete::generate(Shell::Bash, &mut cmd, name, &mut out),
-                CompletionShell::Zsh => clap_complete::generate(Shell::Zsh, &mut cmd, name, &mut out),
-                CompletionShell::Fish => clap_complete::generate(Shell::Fish, &mut cmd, name, &mut out),
+                CompletionShell::Bash => {
+                    clap_complete::generate(Shell::Bash, &mut cmd, name, &mut out)
+                }
+                CompletionShell::Zsh => {
+                    clap_complete::generate(Shell::Zsh, &mut cmd, name, &mut out)
+                }
+                CompletionShell::Fish => {
+                    clap_complete::generate(Shell::Fish, &mut cmd, name, &mut out)
+                }
                 CompletionShell::Powershell => {
                     clap_complete::generate(Shell::PowerShell, &mut cmd, name, &mut out)
                 }
-                CompletionShell::Elvish => clap_complete::generate(Shell::Elvish, &mut cmd, name, &mut out),
-                CompletionShell::Nushell => clap_complete::generate(Nushell, &mut cmd, name, &mut out),
+                CompletionShell::Elvish => {
+                    clap_complete::generate(Shell::Elvish, &mut cmd, name, &mut out)
+                }
+                CompletionShell::Nushell => {
+                    clap_complete::generate(Nushell, &mut cmd, name, &mut out)
+                }
             }
             Ok(())
         }

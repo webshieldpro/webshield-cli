@@ -40,7 +40,8 @@ pub async fn run(ctx: &Context, cmd: AuthCommand) -> Result<()> {
 async fn login(ctx: &Context, token: Option<String>, api_url: String) -> Result<()> {
     let token = match token {
         Some(t) => t,
-        None => rpassword::prompt_password(i18n::tr(M::TokenPrompt)).context("failed to read the token")?,
+        None => rpassword::prompt_password(i18n::tr(M::TokenPrompt))
+            .context("failed to read the token")?,
     };
     let token = token.trim().to_string();
     if !token.starts_with("wsk_") {
@@ -49,7 +50,10 @@ async fn login(ctx: &Context, token: Option<String>, api_url: String) -> Result<
 
     let mut cfg = Config::load()?;
     let name = cfg.active_profile_name(ctx.profile_name());
-    let profile = cfg.profiles.entry(name.clone()).or_insert_with(Profile::default);
+    let profile = cfg
+        .profiles
+        .entry(name.clone())
+        .or_insert_with(Profile::default);
     profile.api_url = api_url.clone();
     profile.token = Some(token.clone());
     if cfg.default_profile.is_none() {
@@ -64,8 +68,14 @@ async fn login(ctx: &Context, token: Option<String>, api_url: String) -> Result<
         Ok(code) if code.as_u16() == 403 => {
             crate::output::success(&i18n::f(M::TokenSavedScoped, &[("profile", &name)]))
         }
-        Ok(code) => crate::output::info(&i18n::f(M::TokenSavedCode, &[("code", &code.as_u16().to_string())])),
-        Err(err) => crate::output::info(&i18n::f(M::TokenSavedProbeFail, &[("err", &err.to_string())])),
+        Ok(code) => crate::output::info(&i18n::f(
+            M::TokenSavedCode,
+            &[("code", &code.as_u16().to_string())],
+        )),
+        Err(err) => crate::output::info(&i18n::f(
+            M::TokenSavedProbeFail,
+            &[("err", &err.to_string())],
+        )),
     }
     Ok(())
 }
@@ -108,7 +118,11 @@ async fn status(ctx: &Context) -> Result<()> {
         200 => style(i18n::tr(M::AccessOk).to_string()).green(),
         401 => style(i18n::tr(M::AccessInvalid).to_string()).red(),
         403 => style(i18n::tr(M::AccessForbidden).to_string()).yellow(),
-        other => style(i18n::f(M::AccessUnexpected, &[("code", &other.to_string())])).yellow(),
+        other => style(i18n::f(
+            M::AccessUnexpected,
+            &[("code", &other.to_string())],
+        ))
+        .yellow(),
     };
     println!("{}  {verdict}", i18n::tr(M::LblAccess));
     Ok(())
@@ -130,6 +144,10 @@ fn logout(ctx: &Context) -> Result<()> {
 /// Lightweight token check: GET /domains, only the status code matters.
 async fn probe(api_url: &str, token: &str) -> Result<reqwest::StatusCode> {
     let url = format!("{}/api/v1/domains", api_url.trim_end_matches('/'));
-    let resp = reqwest::Client::new().get(url).bearer_auth(token).send().await?;
+    let resp = reqwest::Client::new()
+        .get(url)
+        .bearer_auth(token)
+        .send()
+        .await?;
     Ok(resp.status())
 }

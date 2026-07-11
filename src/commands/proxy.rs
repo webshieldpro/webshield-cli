@@ -102,14 +102,21 @@ pub async fn run(ctx: &Context, cmd: ProxyCommand) -> Result<()> {
                 fields.insert("max_body_size_mb".into(), json!(v));
             }
             if let Some(v) = block_bots {
-                let slugs: Vec<&str> = v.split(',').map(str::trim).filter(|s| !s.is_empty()).collect();
+                let slugs: Vec<&str> = v
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .collect();
                 fields.insert("blocked_bots".into(), json!(slugs));
             }
             set(&client, &hostname, domain.as_deref(), fields).await
         }
         ProxyCommand::Remove { hostname } => {
             let cfg = resolve_proxy(&client, &hostname).await?;
-            confirm(ctx.yes, &i18n::f(M::ConfirmRemoveProxy, &[("host", &hostname)]))?;
+            confirm(
+                ctx.yes,
+                &i18n::f(M::ConfirmRemoveProxy, &[("host", &hostname)]),
+            )?;
             client.delete(&format!("nginx-configs/{}", cfg.id)).await?;
             success(&i18n::f(M::ProxyRemoved, &[("host", &hostname)]));
             Ok(())
@@ -140,8 +147,16 @@ async fn list(ctx: &Context, client: &Client) -> Result<()> {
                 c.domain_name.clone().unwrap_or_default(),
                 c.mode.clone().unwrap_or_default(),
                 c.redirect_target.clone().unwrap_or_default(),
-                if c.ssl_required.unwrap_or(false) { yes.into() } else { String::new() },
-                if c.bot_protection_enabled.unwrap_or(false) { yes.into() } else { String::new() },
+                if c.ssl_required.unwrap_or(false) {
+                    yes.into()
+                } else {
+                    String::new()
+                },
+                if c.bot_protection_enabled.unwrap_or(false) {
+                    yes.into()
+                } else {
+                    String::new()
+                },
             ]
         })
         .collect();
@@ -160,10 +175,17 @@ async fn list(ctx: &Context, client: &Client) -> Result<()> {
 }
 
 /// Upsert: PATCH when the config already exists, otherwise POST (domain required).
-async fn set(client: &Client, hostname: &str, domain: Option<&str>, mut fields: Map<String, Value>) -> Result<()> {
+async fn set(
+    client: &Client,
+    hostname: &str,
+    domain: Option<&str>,
+    mut fields: Map<String, Value>,
+) -> Result<()> {
     let existing = {
         let configs: Vec<ProxyConfig> = client.list_all("nginx-configs").await?;
-        configs.into_iter().find(|c| c.hostname.eq_ignore_ascii_case(hostname))
+        configs
+            .into_iter()
+            .find(|c| c.hostname.eq_ignore_ascii_case(hostname))
     };
 
     if let Some(cfg) = existing {
@@ -183,7 +205,9 @@ async fn set(client: &Client, hostname: &str, domain: Option<&str>, mut fields: 
         let d = resolve_domain(client, domain).await?;
         fields.insert("hostname".into(), json!(hostname));
         fields.insert("domain_id".into(), json!(d.id));
-        let _: Value = client.post_json("nginx-configs", &Value::Object(fields)).await?;
+        let _: Value = client
+            .post_json("nginx-configs", &Value::Object(fields))
+            .await?;
         success(&i18n::f(M::ProxyCreated, &[("host", hostname)]));
     }
     Ok(())
