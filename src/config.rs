@@ -90,3 +90,51 @@ impl Config {
         self.profiles.get(name)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_profiles_and_defaults_missing_api_url() {
+        let cfg: Config = toml::from_str(
+            r#"
+            default_profile = "work"
+
+            [profiles.work]
+            api_url = "https://staging.example.com"
+            token = "wsk_abc"
+
+            [profiles.home]
+            token = "wsk_def"
+            "#,
+        )
+        .unwrap();
+        assert_eq!(
+            cfg.profile("work").unwrap().api_url,
+            "https://staging.example.com"
+        );
+        // api_url falls back to the production default when omitted.
+        assert_eq!(cfg.profile("home").unwrap().api_url, DEFAULT_API_URL);
+        assert!(cfg.profile("missing").is_none());
+    }
+
+    #[test]
+    fn active_profile_precedence() {
+        let mut cfg = Config::default();
+        // No override, no default → literal "default".
+        assert_eq!(cfg.active_profile_name(None), "default");
+        cfg.default_profile = Some("work".into());
+        assert_eq!(cfg.active_profile_name(None), "work");
+        // An explicit override (flag/env) wins over the config default.
+        assert_eq!(cfg.active_profile_name(Some("home")), "home");
+    }
+
+    #[test]
+    fn token_is_omitted_from_serialized_config_when_absent() {
+        let mut cfg = Config::default();
+        cfg.profiles.insert("p".into(), Profile::default());
+        let raw = toml::to_string_pretty(&cfg).unwrap();
+        assert!(!raw.contains("token"), "got: {raw}");
+    }
+}

@@ -27,8 +27,20 @@ jobs:
             exit 1
           fi
 
+  # Same checks as ci.yaml: a tag must not ship untested code.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check formatting
+        run: cargo fmt --check
+      - name: Clippy (warnings are errors)
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Run tests
+        run: cargo test
+
   build:
-    needs: version-check
+    needs: [version-check, test]
     strategy:
       fail-fast: false
       matrix:

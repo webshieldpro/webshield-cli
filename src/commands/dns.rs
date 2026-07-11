@@ -315,3 +315,265 @@ async fn dnssec(client: &Client, cmd: DnssecCommand) -> Result<()> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wiremock::matchers::{body_json, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[test]
+    fn to_fqdn_normalizes_names() {
+        // Apex aliases.
+        assert_eq!(to_fqdn("@", "example.com"), "example.com.");
+        assert_eq!(to_fqdn("", "example.com"), "example.com.");
+        assert_eq!(to_fqdn("example.com", "example.com"), "example.com.");
+        // Relative and absolute forms converge.
+        assert_eq!(to_fqdn("www", "example.com"), "www.example.com.");
+        assert_eq!(
+            to_fqdn("www.example.com", "example.com"),
+            "www.example.com."
+        );
+        // Case and trailing dots are ignored.
+        assert_eq!(
+            to_fqdn("WWW.Example.COM.", "example.com."),
+            "www.example.com."
+        );
+    }
+
+    #[test]
+    fn find_rrset_matches_case_and_dot_insensitively() {
+        let rrsets = vec![RRSet {
+            name: "www.example.com.".into(),
+            rr_type: "A".into(),
+            ttl: Some(300),
+            records: vec![],
+            proxied: false,
+        }];
+        assert!(find_rrset(&rrsets, "www.example.com.", "a").is_some());
+        assert!(find_rrset(&rrsets, "www.example.com", "A").is_some());
+        assert!(find_rrset(&rrsets, "other.example.com.", "A").is_none());
+        assert!(find_rrset(&rrsets, "www.example.com.", "TXT").is_none());
+    }
+
+    /// Mounts the domain list every `change()` call starts from (`resolve_domain`).
+    async fn mount_domain(server: &MockServer) {
+        Mock::given(method("GET"))
+            .and(path("/api/v1/domains"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(json!([{"id": 7, "name": "example.com"}])),
+            )
+            .mount(server)
+            .await;
+    }
+
+    async fn mount_records(server: &MockServer, rrsets: Value) {
+        Mock::given(method("GET"))
+            .and(path("/api/v1/domains/7/records"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "rrsets": rrsets })))
+            .mount(server)
+            .await;
+    }
+
+    fn client(server: &MockServer) -> Client {
+        Client::new(&server.uri(), "wsk_test").unwrap()
+    }
+
+    #[tokio::test]
+    async fn add_posts_default_rrset_without_fetching_records() {
+        let server = MockServer::start().await;
+        mount_domain(&server).await;
+        // The server merges on the default changetype, so `add` must NOT read
+        // the current records and must NOT send a DELETE.
+        Mock::given(method("POST"))
+            .and(path("/api/v1/domains/7/records"))
+            .and(body_json(json!({
+                "rrsets": [{
+                    "name": "www", "type": "A", "ttl": 300,
+                    "records": [{"content": "1.1.1.1"}],
+                }],
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        change(
+            &client(&server),
+            "example.com",
+            "www",
+            "a",
+            &["1.1.1.1".to_string()],
+            300,
+            Op::Add,
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn set_reconciles_deletes_stale_then_posts_targets() {
+        let server = MockServer::start().await;
+        mount_domain(&server).await;
+        // Current server state: 1.1.1.1 (stale) + 2.2.2.2 (kept).
+        mount_records(
+            &server,
+            json!([{
+                "name": "www.example.com.", "type": "A", "ttl": 300,
+                "records": [{"content": "1.1.1.1"}, {"content": "2.2.2.2"}],
+            }]),
+        )
+        .await;
+        // Reconcile step 1: DELETE only the stale value.
+        Mock::given(method("POST"))
+            .and(path("/api/v1/domains/7/records"))
+            .and(body_json(json!({
+                "rrsets": [{
+                    "name": "www", "type": "A", "changetype": "DELETE",
+                    "records": [{"content": "1.1.1.1"}],
+                }],
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+            .expect(1)
+            .mount(&server)
+            .await;
+        // Reconcile step 2: default POST of the full target set (server merges).
+        Mock::given(method("POST"))
+            .and(path("/api/v1/domains/7/records"))
+            .and(body_json(json!({
+                "rrsets": [{
+                    "name": "www", "type": "A", "ttl": 300,
+                    "records": [{"content": "2.2.2.2"}, {"content": "3.3.3.3"}],
+                }],
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        change(
+            &client(&server),
+            "example.com",
+            "www",
+            "a",
+            &["2.2.2.2".to_string(), "3.3.3.3".to_string()],
+            300,
+            Op::Set,
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn set_without_existing_rrset_sends_no_delete() {
+        let server = MockServer::start().await;
+        mount_domain(&server).await;
+        mount_records(&server, json!([])).await;
+        // Only the default POST is mounted; an unexpected DELETE would 404 and fail.
+        Mock::given(method("POST"))
+            .and(path("/api/v1/domains/7/records"))
+            .and(body_json(json!({
+                "rrsets": [{
+                    "name": "www", "type": "A", "ttl": 300,
+                    "records": [{"content": "1.1.1.1"}],
+                }],
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        change(
+            &client(&server),
+            "example.com",
+            "www",
+            "a",
+            &["1.1.1.1".to_string()],
+            300,
+            Op::Set,
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn remove_without_values_deletes_whole_rrset() {
+        let server = MockServer::start().await;
+        mount_domain(&server).await;
+        mount_records(
+            &server,
+            json!([{
+                "name": "www.example.com.", "type": "A", "ttl": 300,
+                "records": [{"content": "1.1.1.1"}, {"content": "2.2.2.2"}],
+            }]),
+        )
+        .await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/domains/7/records"))
+            .and(body_json(json!({
+                "rrsets": [{
+                    "name": "www", "type": "A", "changetype": "DELETE",
+                    "records": [{"content": "1.1.1.1"}, {"content": "2.2.2.2"}],
+                }],
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        change(
+            &client(&server),
+            "example.com",
+            "www",
+            "a",
+            &[],
+            0,
+            Op::Remove,
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn remove_of_missing_rrset_fails() {
+        let server = MockServer::start().await;
+        mount_domain(&server).await;
+        mount_records(&server, json!([])).await;
+
+        let err = change(
+            &client(&server),
+            "example.com",
+            "www",
+            "a",
+            &[],
+            0,
+            Op::Remove,
+        )
+        .await
+        .unwrap_err();
+        assert!(format!("{err:#}").contains("www"), "got: {err:#}");
+    }
+
+    #[tokio::test]
+    async fn unknown_domain_fails_before_any_write() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/domains"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([])))
+            .mount(&server)
+            .await;
+
+        let err = change(
+            &client(&server),
+            "missing.com",
+            "www",
+            "a",
+            &["1.1.1.1".to_string()],
+            300,
+            Op::Add,
+        )
+        .await
+        .unwrap_err();
+        assert!(format!("{err:#}").contains("missing.com"), "got: {err:#}");
+    }
+}

@@ -165,3 +165,148 @@ fn extract_detail(body: &str) -> Option<String> {
         Some(parts.join(" | "))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+    use wiremock::matchers::{header, method, path, query_param, query_param_is_missing};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn client(base: &str) -> Client {
+        Client::new(base, "wsk_test").unwrap()
+    }
+
+    #[test]
+    fn url_joins_base_and_path() {
+        let c = client("https://example.com");
+        assert_eq!(c.url("domains"), "https://example.com/api/v1/domains");
+        // A trailing slash in the base and a leading slash in the path do not double up.
+        let c = client("https://example.com/");
+        assert_eq!(c.url("/domains"), "https://example.com/api/v1/domains");
+    }
+
+    #[test]
+    fn extract_detail_reads_drf_detail() {
+        assert_eq!(
+            extract_detail(r#"{"detail": "Not found."}"#),
+            Some("Not found.".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_detail_joins_field_errors() {
+        let got = extract_detail(r#"{"name": ["This field is required.", "Too short."]}"#);
+        assert_eq!(
+            got,
+            Some("name: This field is required.; Too short.".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_detail_ignores_non_json() {
+        assert_eq!(extract_detail("<html>502</html>"), None);
+        assert_eq!(extract_detail("{}"), None);
+    }
+
+    #[tokio::test]
+    async fn list_all_follows_pagination() {
+        let server = MockServer::start().await;
+        let page2_url = format!("{}/api/v1/things?page=2", server.uri());
+        Mock::given(method("GET"))
+            .and(path("/api/v1/things"))
+            .and(query_param_is_missing("page"))
+            .and(header("authorization", "Bearer wsk_test"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "next": page2_url,
+                "results": [{"v": 1}, {"v": 2}],
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/things"))
+            .and(query_param("page", "2"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "next": null,
+                "results": [{"v": 3}],
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let items: Vec<Value> = client(&server.uri()).list_all("things").await.unwrap();
+        let vals: Vec<i64> = items.iter().map(|i| i["v"].as_i64().unwrap()).collect();
+        assert_eq!(vals, vec![1, 2, 3]);
+    }
+
+    #[tokio::test]
+    async fn list_all_accepts_bare_array() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/things"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([{"v": 1}])))
+            .mount(&server)
+            .await;
+
+        let items: Vec<Value> = client(&server.uri()).list_all("things").await.unwrap();
+        assert_eq!(items.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn send_value_maps_empty_body_to_null() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/things/1/disable"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&server)
+            .await;
+
+        let got = client(&server.uri())
+            .post_empty("things/1/disable")
+            .await
+            .unwrap();
+        assert_eq!(got, Value::Null);
+    }
+
+    #[tokio::test]
+    async fn error_401_includes_detail_and_hint() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/domains"))
+            .respond_with(
+                ResponseTemplate::new(401).set_body_json(json!({"detail": "Invalid token."})),
+            )
+            .mount(&server)
+            .await;
+
+        let err = client(&server.uri())
+            .get_json::<Value>("domains")
+            .await
+            .unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(msg.contains("401 Unauthorized"), "got: {msg}");
+        assert!(msg.contains("Invalid token."), "got: {msg}");
+    }
+
+    #[tokio::test]
+    async fn error_400_joins_serializer_field_errors() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/api/v1/domains"))
+            .respond_with(
+                ResponseTemplate::new(400)
+                    .set_body_json(json!({"name": ["This field is required."]})),
+            )
+            .mount(&server)
+            .await;
+
+        let err = client(&server.uri())
+            .post_json::<_, Value>("domains", &json!({}))
+            .await
+            .unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(msg.contains("400"), "got: {msg}");
+        assert!(msg.contains("name: This field is required."), "got: {msg}");
+    }
+}

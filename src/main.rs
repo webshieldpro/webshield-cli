@@ -207,3 +207,15 @@ async fn run() -> Result<()> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// clap's self-check: catches conflicting flags, bad defaults and other
+    /// structural mistakes in the whole command tree at test time.
+    #[test]
+    fn cli_structure_is_valid() {
+        Cli::command().debug_assert();
+    }
+}

@@ -38,6 +38,14 @@ console = "0.15"
 rpassword = "7"
 futures = "0.3"
 
+[dev-dependencies]
+# HTTP mock server for API-level tests (works with tokio + reqwest).
+wiremock = "0.6"
+# Black-box tests of the compiled binary (tests/cli.rs).
+assert_cmd = "2"
+predicates = "3"
+tempfile = "3"
+
 [profile.release]
 strip = true
 lto = true

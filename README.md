@@ -18,6 +18,12 @@ cargo build --release
 mv target/release/webshield ~/.local/bin/
 ```
 
+Run the test suite (unit tests with a mock API server + black-box tests of the binary):
+
+```sh
+cargo test
+```
+
 Shell completion
 ```sh
 # bash (or system-wide: /etc/bash_completion.d/webshield)
