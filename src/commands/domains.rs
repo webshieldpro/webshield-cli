@@ -1,13 +1,14 @@
 //! Domain (zone) management.
 
-use anyhow::Result;
-use clap::Subcommand;
-use serde_json::json;
-
-use crate::commands::{confirm, resolve_domain};
+use crate::api::Client;
+use crate::api::_models::domain::{Domain, DomainInner};
+use crate::commands::confirm;
 use crate::i18n::{self, M};
 use crate::output::{info, print_json, print_table, success, warn, OutputFormat};
 use crate::Context;
+use anyhow::Result;
+use clap::Subcommand;
+use serde_json::json;
 
 #[derive(Subcommand)]
 pub enum DomainsCommand {
@@ -33,14 +34,16 @@ pub async fn run(ctx: &Context, cmd: DomainsCommand) -> Result<()> {
     let client = ctx.client()?;
     match cmd {
         DomainsCommand::List => {
-            let domains: Vec<crate::api::models::Domain> = client.list_all("domains").await?;
-            if ctx.output == OutputFormat::Json {
-                return print_json(&domains);
-            }
+            // let domains: Vec<crate::api::models::Domain> = client.list_all("domains").await?;
+            let domains: Domain = client.n_send(()).await?;
+            // if ctx.output == OutputFormat::Json {
+            //     return print_json(&domains);
+            // }
             let yes = i18n::tr(M::Yes);
             let no = i18n::tr(M::No);
             let dash = i18n::tr(M::Dash);
             let rows = domains
+                .results
                 .iter()
                 .map(|d| {
                     vec![
@@ -70,20 +73,23 @@ pub async fn run(ctx: &Context, cmd: DomainsCommand) -> Result<()> {
         }
         DomainsCommand::Add { name, import } => {
             let body = json!({ "name": name, "import_method": import });
-            let created: crate::api::models::Domain = client.post_json("domains", &body).await?;
+            // let created: crate::api::models::Domain = client.post_json("domains", &body).await?;
+            let created: DomainInner = client.n_send_json(&body, ()).await?;
             success(&i18n::f(
                 M::DomainCreated,
                 &[("name", &created.name), ("id", &created.id.to_string())],
             ));
-            if ctx.output == OutputFormat::Json {
-                return print_json(&created);
-            }
+
+            // if ctx.output == OutputFormat::Json {
+            //     return print_json(&created);
+            // }
         }
         DomainsCommand::Get { name } => {
-            let domain = resolve_domain(&client, &name).await?;
-            if ctx.output == OutputFormat::Json {
-                return print_json(&domain);
-            }
+            let domain = resolve_domain(&client, &name).await?; // TODO
+                                                                // if ctx.output == OutputFormat::Json {
+                                                                //     return print_json(&domain);
+                                                                // }
+
             let yes = i18n::tr(M::Yes);
             let no = i18n::tr(M::No);
             let dash = i18n::tr(M::Dash);
@@ -122,9 +128,11 @@ pub async fn run(ctx: &Context, cmd: DomainsCommand) -> Result<()> {
         }
         DomainsCommand::Check { name } => {
             let domain = resolve_domain(&client, &name).await?;
+
             let result = client
                 .post_empty(&format!("domains/{}/check-delegation", domain.id))
                 .await?;
+
             if ctx.output == OutputFormat::Json {
                 return print_json(&result);
             }
@@ -164,4 +172,16 @@ pub async fn run(ctx: &Context, cmd: DomainsCommand) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Resolves the user's domain by name (case-insensitive, trailing dot ignored).
+pub async fn resolve_domain(client: &Client, name: &str) -> Result<DomainInner> {
+    let needle = name.trim().trim_end_matches('.').to_lowercase();
+    // let domains: Vec<models::Domain> = client.list_all("domains").await?;
+    let domains: Domain = client.n_send(()).await?;
+    domains
+        .results
+        .into_iter()
+        .find(|d| d.name.trim_end_matches('.').eq_ignore_ascii_case(&needle))
+        .ok_or_else(|| anyhow::anyhow!(i18n::f(M::DomainNotFound, &[("name", name)])))
 }

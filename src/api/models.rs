@@ -1,5 +1,6 @@
-//! Typed models of `/api/v1` responses. Fields the server may omit are marked
+//! Typed _models of `/api/v1` responses. Fields the server may omit are marked
 //! `#[serde(default)]` so the CLI does not break on schema extensions.
+
 
 use serde::{Deserialize, Serialize};
 
@@ -94,7 +95,6 @@ pub struct StaticSite {
     pub size_bytes: Option<i64>,
 }
 
-/// Response of `GET /static-sites/<id>/files` — flat list of draft files with etags.
 #[derive(Debug, Deserialize)]
 pub struct FilesResponse {
     #[serde(default)]
@@ -110,7 +110,6 @@ pub struct ServerFile {
     pub is_dir: bool,
 }
 
-/// Edge configuration of a proxied/redirect host (`/nginx-configs`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProxyConfig {
     pub id: i64,

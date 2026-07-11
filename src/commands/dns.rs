@@ -15,7 +15,7 @@ use serde_json::{json, Value};
 
 use crate::api::models::{RRSet, RecordsResponse};
 use crate::api::Client;
-use crate::commands::resolve_domain;
+use crate::commands::domains::resolve_domain;
 use crate::i18n::{self, M};
 use crate::output::{print_json, print_table, success, OutputFormat};
 use crate::Context;

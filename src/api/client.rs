@@ -1,14 +1,14 @@
 //! HTTP client for the `/api/v1` API. Authentication — Bearer with a personal `wsk_…` token.
 //! DRF errors (`{"detail": …}` or a field error map) are unwrapped into readable text.
 
+use super::models::Page;
+use crate::api::get_url::MakeReq;
+use crate::i18n::{self, M};
 use anyhow::{anyhow, bail, Context, Result};
 use reqwest::{Method, RequestBuilder, Response, StatusCode};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::Value;
-
-use super::models::Page;
-use crate::i18n::{self, M};
 
 #[derive(Clone)]
 pub struct Client {
@@ -46,11 +46,29 @@ impl Client {
         serde_json::from_value(value).context(i18n::tr(M::ErrParse))
     }
 
+    fn n_make_request<T: DeserializeOwned + MakeReq>(&self, params: T::Params) -> RequestBuilder {
+        self.request(T::method(), T::get_url(params).as_ref())
+    }
+
+    pub async fn n_send<T: DeserializeOwned + MakeReq>(&self, params: T::Params) -> Result<T> {
+        self.send_json(self.n_make_request::<T>(params)).await
+    }
+
+    pub async fn n_send_json<T: DeserializeOwned + MakeReq, D: Serialize>(
+        &self,
+        dt: &D,
+        params: T::Params,
+    ) -> Result<T> {
+        self.send_json(self.n_make_request::<T>(params).json(dt)).await
+    }
+
     /// Sends a request and returns raw JSON (or `Null` for an empty body).
     pub async fn send_value(&self, rb: RequestBuilder) -> Result<Value> {
+        println!("DEBUG BUILDER {:?}", rb);
         let resp = rb.send().await.context(i18n::tr(M::ErrNetwork))?;
         let resp = check_status(resp).await?;
         let text = resp.text().await.context(i18n::tr(M::ErrReadBody))?;
+        println!("DEBUG RESPONSE: {}", text);
         if text.trim().is_empty() {
             return Ok(Value::Null);
         }

@@ -8,6 +8,12 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use crate::api::_models::sites::{FilesResponseSite, SitesList, SitesListInner};
+use crate::api::Client;
+use crate::commands::domains::resolve_domain;
+use crate::i18n::{self, Lang, M};
+use crate::output::{print_json, print_table, success, OutputFormat};
+use crate::Context;
 use anyhow::{bail, Context as _, Result};
 use clap::Subcommand;
 use futures::stream::{self, StreamExt};
@@ -16,13 +22,6 @@ use md5::{Digest, Md5};
 use reqwest::multipart::{Form, Part};
 use reqwest::Method;
 use serde_json::{json, Value};
-
-use crate::api::models::{FilesResponse, StaticSite};
-use crate::api::Client;
-use crate::commands::resolve_domain;
-use crate::i18n::{self, Lang, M};
-use crate::output::{print_json, print_table, success, OutputFormat};
-use crate::Context;
 
 // Batch limits (see server-side restrictions): 100 is the Django
 // DATA_UPLOAD_MAX_NUMBER_FILES ceiling, 32 MB is a sane size for one multipart.
@@ -88,21 +87,23 @@ pub async fn run(ctx: &Context, cmd: SitesCommand) -> Result<()> {
     }
 }
 
-async fn resolve_site(client: &Client, hostname: &str) -> Result<StaticSite> {
+async fn resolve_site(client: &Client, hostname: &str) -> Result<SitesListInner> {
+    let sites: SitesList = client.n_send(()).await?;
+
     let needle = hostname.trim().to_lowercase();
-    let sites: Vec<StaticSite> = client.list_all("static-sites").await?;
+
     sites
+        .results
         .into_iter()
         .find(|s| s.hostname.eq_ignore_ascii_case(&needle))
         .ok_or_else(|| anyhow::anyhow!(i18n::f(M::NotFoundSite, &[("host", hostname)])))
 }
 
 async fn list(ctx: &Context, client: &Client) -> Result<()> {
-    let sites: Vec<StaticSite> = client.list_all("static-sites").await?;
-    if ctx.output == OutputFormat::Json {
-        return print_json(&sites);
-    }
+    let sites: SitesList = client.n_send(()).await?;
+
     let rows = sites
+        .results
         .iter()
         .map(|s| {
             vec![
@@ -115,6 +116,7 @@ async fn list(ctx: &Context, client: &Client) -> Result<()> {
             ]
         })
         .collect();
+
     print_table(
         &[
             i18n::tr(M::HId),
@@ -132,7 +134,7 @@ async fn list(ctx: &Context, client: &Client) -> Result<()> {
 async fn create(client: &Client, hostname: &str, domain: &str) -> Result<()> {
     let d = resolve_domain(client, domain).await?;
     let body = json!({ "hostname": hostname, "domain_id": d.id });
-    let site: StaticSite = client.post_json("static-sites", &body).await?;
+    let site: SitesListInner = client.n_send_json(&body, ()).await?;
     success(&i18n::f(
         M::SiteCreated,
         &[("host", &site.hostname), ("id", &site.id.to_string())],
@@ -142,9 +144,12 @@ async fn create(client: &Client, hostname: &str, domain: &str) -> Result<()> {
 
 async fn files(ctx: &Context, client: &Client, hostname: &str) -> Result<()> {
     let site = resolve_site(client, hostname).await?;
-    let resp: FilesResponse = client
-        .get_json(&format!("static-sites/{}/files", site.id))
-        .await?;
+    // let resp: FilesResponse = client
+    //     .get_json(&format!("static-sites/{}/files", site.id))
+    //     .await?;
+
+    let resp: FilesResponseSite = client.n_send(site.id).await?;
+
     if ctx.output == OutputFormat::Json {
         return print_json(&resp.files.iter().map(|f| &f.path).collect::<Vec<_>>());
     }
@@ -171,7 +176,7 @@ async fn publish(client: &Client, site_id: i64, dir: &Path, dry_run: bool) -> Re
     }
 
     // 1. Current draft state on the server: path -> etag.
-    let resp: FilesResponse = client
+    let resp: FilesResponseSite = client
         .get_json(&format!("static-sites/{site_id}/files"))
         .await?;
     let server: HashMap<String, String> = resp

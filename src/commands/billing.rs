@@ -5,7 +5,7 @@ use clap::Subcommand;
 use serde_json::Value;
 
 use crate::api::Client;
-use crate::commands::resolve_domain;
+use crate::commands::domains::resolve_domain;
 use crate::i18n::{self, M};
 use crate::output::{print_json, print_table, OutputFormat};
 use crate::Context;
