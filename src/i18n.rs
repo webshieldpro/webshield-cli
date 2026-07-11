@@ -572,7 +572,7 @@ fn arg_ru(rel: &str, id: &str) -> Option<&'static str> {
         "http3" => "HTTP/3 (true/false)",
         "max_body_mb" => "Максимальный размер тела запроса, МБ (0 = без лимита)",
         "block_bots" => "Слаги блокируемых ботов через запятую (см. `webshield bots`)",
-        "shell" => "Оболочка: bash, zsh, fish, powershell, elvish",
+        "shell" => "Оболочка: bash, zsh, fish, powershell, elvish, nushell",
         _ => return None,
     })
 }
