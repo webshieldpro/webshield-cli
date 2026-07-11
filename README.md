@@ -80,6 +80,7 @@ webshield dns dnssec enable example.com
 webshield sites list
 webshield sites create www.example.com --domain example.com
 webshield sites publish www.example.com --dir ./public       # incremental
+webshield sites publish --site-id 6 --dir ./public           # by id (narrow sites:publish tokens)
 webshield sites publish www.example.com --dir ./public --dry-run
 
 # Proxy/redirect hosts (edge settings)

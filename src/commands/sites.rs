@@ -50,8 +50,11 @@ pub enum SitesCommand {
     },
     /// Incrementally publish a directory as the site content.
     Publish {
-        /// Site hostname.
-        hostname: String,
+        /// Site hostname (omit when --site-id is given).
+        hostname: Option<String>,
+        /// Site id; skips the hostname lookup (useful for narrow sites:publish tokens).
+        #[arg(long)]
+        site_id: Option<i64>,
         /// Built site directory.
         #[arg(long)]
         dir: PathBuf,
@@ -85,11 +88,17 @@ pub async fn run(ctx: &Context, cmd: SitesCommand) -> Result<ProgramRes> {
             .map(ProgramRes::from),
         SitesCommand::Publish {
             hostname,
+            site_id,
             dir,
             dry_run,
         } => {
-            let site = resolve_site(&client, &hostname).await?;
-            publish(&client, site.id, &dir, dry_run)
+            // --site-id обходит листинг сайтов: узкому токену sites:publish его достаточно.
+            let id = match (site_id, hostname) {
+                (Some(id), _) => id,
+                (None, Some(host)) => resolve_site(&client, &host).await?.id,
+                (None, None) => bail!(i18n::tr(M::PublishNeedsSiteRef)),
+            };
+            publish(&client, id, &dir, dry_run)
                 .await
                 .map(ProgramRes::from)
         }

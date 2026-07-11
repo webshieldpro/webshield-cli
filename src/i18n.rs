@@ -168,6 +168,7 @@ pub enum M {
     DeletedFiles,
     UploadBar,
     NotFoundSite,
+    PublishNeedsSiteRef,
     NotADir,
     DirNotFound,
     // proxy
@@ -393,6 +394,10 @@ impl M {
                 "  заливка [{bar:30}] {pos}/{len} файлов",
             ),
             NotFoundSite => ("static site `{host}` not found", "статический сайт `{host}` не найден"),
+            PublishNeedsSiteRef => (
+                "specify a site: pass a hostname or --site-id",
+                "укажите сайт: передайте hostname или --site-id",
+            ),
             NotADir => ("not a directory: {path}", "не каталог: {path}"),
             DirNotFound => ("directory not found: {path}", "каталог не найден: {path}"),
 

@@ -52,6 +52,18 @@ fn missing_token_is_a_clean_error() {
 }
 
 #[test]
+fn publish_without_site_reference_is_a_clean_error() {
+    let dir = tempfile::tempdir().unwrap();
+    // Neither a hostname nor --site-id: must fail before touching the network.
+    webshield(dir.path())
+        .env("WS_TOKEN", "wsk_test")
+        .args(["sites", "publish", "--dir", dir.path().to_str().unwrap()])
+        .assert()
+        .code(1)
+        .stderr(predicate::str::contains("specify a site"));
+}
+
+#[test]
 fn unknown_subcommand_fails_with_usage_error() {
     let dir = tempfile::tempdir().unwrap();
     // Exit code 2 is clap's usage-error convention.
