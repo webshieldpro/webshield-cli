@@ -1,7 +1,7 @@
 //! Domain statistics and protection (scope `stats`, read-only).
 
 use crate::api::Client;
-use crate::api::_models::stats::{BanStats, SummaryStats};
+use crate::api::_models::stats::{BanStats, StatBans, StatDomains, SummaryStats};
 use crate::commands::domains::resolve_domain;
 use crate::i18n::{self, M};
 use crate::output::print_table;
@@ -38,7 +38,7 @@ pub async fn run(ctx: &Context, cmd: StatsCommand) -> Result<()> {
 async fn summary(client: &Client, domain: &str, range: &str) -> Result<()> {
     let d = resolve_domain(client, domain).await?;
     // The summary is complex (charts and aggregates) — print it as JSON.
-    let payload: SummaryStats = client.n_send((d.id, range)).await?;
+    let payload: SummaryStats = client.n_send::<StatDomains>((d.id, range.to_string())).await?;
 
     println!("{:?}", payload);
     Ok(())
@@ -47,7 +47,7 @@ async fn summary(client: &Client, domain: &str, range: &str) -> Result<()> {
 async fn bans(client: &Client, domain: &str, range: &str) -> Result<()> {
     let d = resolve_domain(client, domain).await?;
 
-    let payload: BanStats = client.n_send((d.id, range)).await?;
+    let payload: BanStats = client.n_send::<StatBans>((d.id, range.to_string())).await?;
 
     if payload.bans.is_empty() {
         crate::output::info(i18n::tr(M::NoBans));

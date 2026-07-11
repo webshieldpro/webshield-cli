@@ -2,8 +2,15 @@
 
 use crate::api::get_url::MakeReq;
 use reqwest::Method;
-use serde::Deserialize;
+use reqwest::multipart::Form;
+use serde::{Deserialize, Serialize};
 
+pub struct SiteAdd;
+#[derive(Serialize)]
+pub struct SiteAddReq {
+    pub hostname: String,
+    pub domain_id: i64
+}
 #[derive(Deserialize)]
 pub struct SitesListInner {
     pub id: i64,
@@ -18,8 +25,10 @@ pub struct SitesListInner {
     pub size_bytes: Option<i64>,
 }
 
-impl MakeReq for SitesListInner {
+impl MakeReq for SiteAdd {
     type Params = ();
+    type Request = SiteAddReq;
+    type Response = SitesListInner;
 
     fn get_url(_: ()) -> &'static str {
         "static-sites"
@@ -30,13 +39,17 @@ impl MakeReq for SitesListInner {
     }
 }
 
+pub struct Sites;
+
 #[derive(Deserialize)]
 pub struct SitesList {
     pub results: Vec<SitesListInner>,
 }
 
-impl MakeReq for SitesList {
+impl MakeReq for Sites {
     type Params = ();
+    type Request = ();
+    type Response = SitesList;
 
     fn get_url(_: ()) -> &'static str {
         "static-sites"
@@ -47,14 +60,17 @@ impl MakeReq for SitesList {
     }
 }
 
+pub struct SiteFiles;
 #[derive(Debug, Deserialize)]
 pub struct FilesResponseSite {
     #[serde(default)]
     pub files: Vec<ServerFileSite>,
 }
 
-impl MakeReq for FilesResponseSite {
+impl MakeReq for SiteFiles {
     type Params = i64;
+    type Request = ();
+    type Response = FilesResponseSite;
 
     fn get_url(params: Self::Params) -> String {
         format!("static-sites/{}/files", params)
@@ -72,4 +88,71 @@ pub struct ServerFileSite {
     pub etag: Option<String>,
     #[serde(default)]
     pub is_dir: bool,
+}
+
+pub struct SiteDisable;
+
+impl MakeReq for SiteDisable {
+    type Params = i64;
+    type Request = ();
+    type Response = ();
+
+    fn get_url(id: Self::Params) -> impl AsRef<str> {
+        format!("static-sites/{}/disable", id)
+    }
+
+    fn method() -> Method {
+        Method::POST
+    }
+}
+
+pub struct SitePublish;
+
+impl MakeReq for SitePublish {
+    type Params = i64;
+    type Request = ();
+    type Response = ();
+
+    fn get_url(id: Self::Params) -> impl AsRef<str> {
+        format!("static-sites/{}/publish", id)
+    }
+
+    fn method() -> Method {
+        Method::POST
+    }
+}
+
+pub struct SiteFilesUploadBatch;
+impl MakeReq for SiteFilesUploadBatch {
+    type Params = i64;
+    type Request = Form;
+    type Response = ();
+
+    fn get_url(site_id: Self::Params) -> impl AsRef<str> {
+        format!("static-sites/{site_id}/upload")
+    }
+
+    fn method() -> Method {
+        Method::POST
+    }
+}
+
+pub struct SiteFilesDeleteBatch;
+#[derive(Debug, Serialize)]
+pub struct SiteFilesPaths {
+    pub paths: Vec<String>
+}
+
+impl MakeReq for SiteFilesDeleteBatch {
+    type Params = i64;
+    type Request = SiteFilesPaths;
+    type Response = serde_json::Value;
+
+    fn get_url(site_id: Self::Params) -> impl AsRef<str> {
+        format!("static-sites/{site_id}/delete-files")
+    }
+
+    fn method() -> Method {
+        Method::POST
+    }
 }

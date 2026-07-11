@@ -1,7 +1,7 @@
 //! Domain (zone) management.
 
 use crate::api::Client;
-use crate::api::_models::domain::{Domain, DomainInner};
+use crate::api::_models::domain::{DomainAdd, DomainAddReq, DomainCheckDelegation, DomainDelete, DomainInner, Domains};
 use crate::commands::confirm;
 use crate::i18n::{self, M};
 use crate::output::{info, print_json, print_table, success, warn, OutputFormat};
@@ -35,7 +35,7 @@ pub async fn run(ctx: &Context, cmd: DomainsCommand) -> Result<()> {
     match cmd {
         DomainsCommand::List => {
             // let domains: Vec<crate::api::models::Domain> = client.list_all("domains").await?;
-            let domains: Domain = client.n_send(()).await?;
+            let domains = client.n_send::<Domains>(()).await?;
             // if ctx.output == OutputFormat::Json {
             //     return print_json(&domains);
             // }
@@ -74,7 +74,15 @@ pub async fn run(ctx: &Context, cmd: DomainsCommand) -> Result<()> {
         DomainsCommand::Add { name, import } => {
             let body = json!({ "name": name, "import_method": import });
             // let created: crate::api::models::Domain = client.post_json("domains", &body).await?;
-            let created: DomainInner = client.n_send_json(&body, ()).await?;
+            let created = client
+                .n_send_ser::<DomainAdd>(
+                    DomainAddReq {
+                        name,
+                        import_method: import,
+                    },
+                    (),
+                )
+                .await?;
             success(&i18n::f(
                 M::DomainCreated,
                 &[("name", &created.name), ("id", &created.id.to_string())],
@@ -123,15 +131,13 @@ pub async fn run(ctx: &Context, cmd: DomainsCommand) -> Result<()> {
                 ctx.yes,
                 &i18n::f(M::ConfirmDeleteDomain, &[("name", &domain.name)]),
             )?;
-            client.delete(&format!("domains/{}", domain.id)).await?;
+            client.n_send::<DomainDelete>(domain.id).await?;
             success(&i18n::f(M::DomainDeleted, &[("name", &domain.name)]));
         }
         DomainsCommand::Check { name } => {
             let domain = resolve_domain(&client, &name).await?;
 
-            let result = client
-                .post_empty(&format!("domains/{}/check-delegation", domain.id))
-                .await?;
+            let result = client.n_send::<DomainCheckDelegation>(domain.id).await?;
 
             if ctx.output == OutputFormat::Json {
                 return print_json(&result);
@@ -178,7 +184,7 @@ pub async fn run(ctx: &Context, cmd: DomainsCommand) -> Result<()> {
 pub async fn resolve_domain(client: &Client, name: &str) -> Result<DomainInner> {
     let needle = name.trim().trim_end_matches('.').to_lowercase();
 
-    let domains: Domain = client.n_send(()).await?;
+    let domains = client.n_send::<Domains>(()).await?;
     domains
         .results
         .into_iter()

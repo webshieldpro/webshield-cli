@@ -4,16 +4,17 @@ use serde::Deserialize;
 use serde_json::Value;
 use std::marker::PhantomData;
 
+pub struct StatBans;
 #[derive(Deserialize)]
-pub struct BanStats<'s> {
-    #[serde(skip)]
-    _param_lifetime: PhantomData<&'s ()>,
+pub struct BanStats {
 
     pub bans: Vec<Value>, // TODO check ban signature
 }
 
-impl<'s> MakeReq for BanStats<'s> {
-    type Params = (i64, &'s str);
+impl MakeReq for StatBans {
+    type Params = (i64, String);
+    type Request = ();
+    type Response = BanStats;
 
     fn get_url(params: Self::Params) -> impl AsRef<str> {
         format!("domains/{}/protection/bans?range={}", params.0, params.1)
@@ -33,11 +34,10 @@ pub struct Totals {
     status_5xx: u64,
 }
 
-#[derive(Deserialize, Debug)]
-pub struct SummaryStats<'s> {
-    #[serde(skip)]
-    _param_lifetime: PhantomData<&'s ()>,
 
+pub struct StatDomains;
+#[derive(Deserialize, Debug)]
+pub struct SummaryStats {
     domain: String,
     generated_at: String,
     range_seconds: u64,
@@ -46,8 +46,10 @@ pub struct SummaryStats<'s> {
     totals: Totals,
 }
 
-impl<'s> MakeReq for SummaryStats<'s> {
-    type Params = (i64, &'s str);
+impl MakeReq for StatDomains {
+    type Params = (i64, String);
+    type Request = ();
+    type Response = SummaryStats;
 
     fn get_url(params: Self::Params) -> impl AsRef<str> {
         format!(

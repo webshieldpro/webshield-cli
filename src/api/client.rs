@@ -6,6 +6,7 @@ use crate::api::get_url::MakeReq;
 use crate::i18n::{self, M};
 use anyhow::{anyhow, bail, Context, Result};
 use reqwest::{Method, RequestBuilder, Response, StatusCode};
+use reqwest::multipart::Form;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::Value;
@@ -41,20 +42,32 @@ impl Client {
     }
 
     /// Sends a request and deserializes the JSON body. Empty body (204) → `null`.
-    pub async fn send_json<T: DeserializeOwned>(&self, rb: RequestBuilder) -> Result<T> {
+    async fn send_json<T: DeserializeOwned>(&self, rb: RequestBuilder) -> Result<T> {
         let value = self.send_value(rb).await?;
         serde_json::from_value(value).context(i18n::tr(M::ErrParse))
     }
 
-    fn n_make_request<T: DeserializeOwned + MakeReq>(&self, params: T::Params) -> RequestBuilder {
-        self.request(T::method(), T::get_url(params).as_ref())
+    fn n_make_request<R: MakeReq>(&self, params: R::Params) -> RequestBuilder {
+        self.request(R::method(), R::get_url(params).as_ref())
     }
 
-    pub async fn n_send<T: DeserializeOwned + MakeReq>(&self, params: T::Params) -> Result<T> {
-        self.send_json(self.n_make_request::<T>(params)).await
+    pub async fn n_send<R: MakeReq<Request=()>>(&self, params: R::Params) -> Result<R::Response> {
+        self.send_json(self.n_make_request::<R>(params)).await
     }
 
-    pub async fn n_send_json<T: DeserializeOwned + MakeReq, D: Serialize>(
+    pub async fn n_send_multipart<R: MakeReq<Request=Form>>(&self, params: R::Params, form: Form) -> Result<R::Response> {
+        self.send_json(self.n_make_request::<R>(params).multipart(form)).await
+    }
+
+    pub async fn n_send_ser<R: MakeReq>(
+        &self,
+        dt: R::Request,
+        params: R::Params,
+    ) -> Result<R::Response> where R::Request: Serialize {
+        self.send_json(self.n_make_request::<R>(params).json(&dt)).await
+    }
+
+    async fn n_send_json<T: DeserializeOwned + MakeReq, D: Serialize>(
         &self,
         dt: &D,
         params: T::Params,
@@ -63,7 +76,7 @@ impl Client {
     }
 
     /// Sends a request and returns raw JSON (or `Null` for an empty body).
-    pub async fn send_value(&self, rb: RequestBuilder) -> Result<Value> {
+    async fn send_value(&self, rb: RequestBuilder) -> Result<Value> {
         println!("DEBUG BUILDER {:?}", rb);
         let resp = rb.send().await.context(i18n::tr(M::ErrNetwork))?;
         let resp = check_status(resp).await?;
@@ -98,6 +111,7 @@ impl Client {
 
     /// Fetches every page of a list endpoint (follows `next`).
     /// Tolerates both the `{results:[…]}` envelope and a bare array.
+    // FIXME: what an awful API
     pub async fn list_all<T: DeserializeOwned>(&self, path: &str) -> Result<Vec<T>> {
         let mut out = Vec::new();
         let mut next_url = self.url(path);

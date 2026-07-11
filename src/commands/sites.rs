@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::api::_models::sites::{FilesResponseSite, SitesList, SitesListInner};
+use crate::api::_models::sites::{FilesResponseSite, SiteAdd, SiteAddReq, SiteDisable, SiteFiles, SiteFilesDeleteBatch, SiteFilesPaths, SiteFilesUploadBatch, SitePublish, Sites, SitesList, SitesListInner};
 use crate::api::Client;
 use crate::commands::domains::resolve_domain;
 use crate::i18n::{self, Lang, M};
@@ -78,8 +78,7 @@ pub async fn run(ctx: &Context, cmd: SitesCommand) -> Result<()> {
         SitesCommand::Files { hostname } => files(ctx, &client, &hostname).await,
         SitesCommand::Disable { hostname } => {
             let site = resolve_site(&client, &hostname).await?;
-            client
-                .post_empty(&format!("static-sites/{}/disable", site.id))
+            client.n_send::<SiteDisable>(site.id)
                 .await?;
             success(&i18n::f(M::SiteDisabled, &[("host", &site.hostname)]));
             Ok(())
@@ -88,7 +87,7 @@ pub async fn run(ctx: &Context, cmd: SitesCommand) -> Result<()> {
 }
 
 async fn resolve_site(client: &Client, hostname: &str) -> Result<SitesListInner> {
-    let sites: SitesList = client.n_send(()).await?;
+    let sites: SitesList = client.n_send::<Sites>(()).await?;
 
     let needle = hostname.trim().to_lowercase();
 
@@ -100,7 +99,7 @@ async fn resolve_site(client: &Client, hostname: &str) -> Result<SitesListInner>
 }
 
 async fn list(ctx: &Context, client: &Client) -> Result<()> {
-    let sites: SitesList = client.n_send(()).await?;
+    let sites: SitesList = client.n_send::<Sites>(()).await?;
 
     let rows = sites
         .results
@@ -133,8 +132,10 @@ async fn list(ctx: &Context, client: &Client) -> Result<()> {
 
 async fn create(client: &Client, hostname: &str, domain: &str) -> Result<()> {
     let d = resolve_domain(client, domain).await?;
-    let body = json!({ "hostname": hostname, "domain_id": d.id });
-    let site: SitesListInner = client.n_send_json(&body, ()).await?;
+    let site: SitesListInner = client.n_send_ser::<SiteAdd>(SiteAddReq{
+        hostname: hostname.to_string(),
+        domain_id: d.id
+    }, ()).await?;
     success(&i18n::f(
         M::SiteCreated,
         &[("host", &site.hostname), ("id", &site.id.to_string())],
@@ -148,7 +149,7 @@ async fn files(ctx: &Context, client: &Client, hostname: &str) -> Result<()> {
     //     .get_json(&format!("static-sites/{}/files", site.id))
     //     .await?;
 
-    let resp: FilesResponseSite = client.n_send(site.id).await?;
+    let resp: FilesResponseSite = client.n_send::<SiteFiles>(site.id).await?;
 
     if ctx.output == OutputFormat::Json {
         return print_json(&resp.files.iter().map(|f| &f.path).collect::<Vec<_>>());
@@ -175,10 +176,9 @@ async fn publish(client: &Client, site_id: i64, dir: &Path, dry_run: bool) -> Re
         ));
     }
 
+    let resp = client.n_send::<SiteFiles>(site_id).await?;
+
     // 1. Current draft state on the server: path -> etag.
-    let resp: FilesResponseSite = client
-        .get_json(&format!("static-sites/{site_id}/files"))
-        .await?;
     let server: HashMap<String, String> = resp
         .files
         .into_iter()
@@ -236,9 +236,7 @@ async fn publish(client: &Client, site_id: i64, dir: &Path, dry_run: bool) -> Re
         delete_all(client, site_id, &to_delete).await?;
     }
     // 6. Publish the snapshot.
-    client
-        .post_empty(&format!("static-sites/{site_id}/publish"))
-        .await?;
+    client.n_send::<SitePublish>(site_id).await?;
     success(i18n::tr(M::Published));
     Ok(())
 }
@@ -359,19 +357,13 @@ async fn upload_batch(client: &Client, site_id: i64, batch: Vec<(String, PathBuf
         let part = Part::bytes(data).file_name(filename).mime_str(&ctype)?;
         form = form.part("files", part);
     }
-    let rb = client
-        .request(Method::POST, &format!("static-sites/{site_id}/upload"))
-        .multipart(form);
-    client.send_value(rb).await?;
+    client.n_send_multipart::<SiteFilesUploadBatch>(site_id, form).await?;
     Ok(())
 }
 
 async fn delete_all(client: &Client, site_id: i64, paths: &[String]) -> Result<()> {
     for chunk in paths.chunks(DELETE_BATCH) {
-        let body = json!({ "paths": chunk });
-        let _: Value = client
-            .post_json(&format!("static-sites/{site_id}/delete-files"), &body)
-            .await?;
+        client.n_send_ser::<SiteFilesDeleteBatch>(SiteFilesPaths{paths: chunk.to_owned()}, site_id).await?;
     }
     crate::output::info(&i18n::f(
         M::DeletedFiles,

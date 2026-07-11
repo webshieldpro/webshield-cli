@@ -1,9 +1,6 @@
 //! Edge settings of proxied/redirect hosts (`/nginx-configs`, scope `proxy`).
 
-use anyhow::{bail, Result};
-use clap::Subcommand;
-use serde_json::{json, Map, Value};
-
+use crate::api::_models::proxy::{ProxyDecl, ProxyDelete, ProxyInfo, ProxyNew, ProxyPatch};
 use crate::api::models::ProxyConfig;
 use crate::api::Client;
 use crate::commands::confirm;
@@ -11,6 +8,19 @@ use crate::commands::domains::resolve_domain;
 use crate::i18n::{self, M};
 use crate::output::{print_json, print_table, success, OutputFormat};
 use crate::Context;
+use anyhow::Result;
+use clap::{Args, Subcommand};
+
+#[derive(Args)]
+struct SetImpl {
+    pub hostname: String,
+    /// Owner domain (required when creating).
+    #[arg(long)]
+    pub domain: String,
+
+    #[command(flatten)]
+    pub info: ProxyInfo,
+}
 
 #[derive(Subcommand)]
 pub enum ProxyCommand {
@@ -19,39 +29,7 @@ pub enum ProxyCommand {
     /// Show a host config.
     Get { hostname: String },
     /// Create or update a host config (partial update if it exists).
-    Set {
-        hostname: String,
-        /// Owner domain (required when creating).
-        #[arg(long)]
-        domain: Option<String>,
-        /// Mode: proxy | redirect.
-        #[arg(long)]
-        mode: Option<String>,
-        /// Redirect target hostname (for mode=redirect).
-        #[arg(long)]
-        redirect_target: Option<String>,
-        /// Require HTTPS (true/false).
-        #[arg(long)]
-        ssl: Option<bool>,
-        /// Bot protection (true/false).
-        #[arg(long)]
-        bot_protection: Option<bool>,
-        /// Captcha check (true/false).
-        #[arg(long)]
-        captcha: Option<bool>,
-        /// HTTP/2 (true/false).
-        #[arg(long)]
-        http2: Option<bool>,
-        /// HTTP/3 (true/false).
-        #[arg(long)]
-        http3: Option<bool>,
-        /// Max request body size in MB (0 = unlimited).
-        #[arg(long)]
-        max_body_mb: Option<i64>,
-        /// Blocked bot slugs, comma-separated (see `webshield bots`).
-        #[arg(long)]
-        block_bots: Option<String>,
-    },
+    Set(SetImpl),
     /// Remove a host config.
     Remove { hostname: String },
 }
@@ -64,61 +42,14 @@ pub async fn run(ctx: &Context, cmd: ProxyCommand) -> Result<()> {
             let cfg = resolve_proxy(&client, &hostname).await?;
             print_json(&cfg)
         }
-        ProxyCommand::Set {
-            hostname,
-            domain,
-            mode,
-            redirect_target,
-            ssl,
-            bot_protection,
-            captcha,
-            http2,
-            http3,
-            max_body_mb,
-            block_bots,
-        } => {
-            let mut fields = Map::new();
-            if let Some(v) = mode {
-                fields.insert("mode".into(), json!(v));
-            }
-            if let Some(v) = redirect_target {
-                fields.insert("redirect_target".into(), json!(v));
-            }
-            if let Some(v) = ssl {
-                fields.insert("ssl_required".into(), json!(v));
-            }
-            if let Some(v) = bot_protection {
-                fields.insert("bot_protection_enabled".into(), json!(v));
-            }
-            if let Some(v) = captcha {
-                fields.insert("captcha_check_enabled".into(), json!(v));
-            }
-            if let Some(v) = http2 {
-                fields.insert("http2_enabled".into(), json!(v));
-            }
-            if let Some(v) = http3 {
-                fields.insert("http3_enabled".into(), json!(v));
-            }
-            if let Some(v) = max_body_mb {
-                fields.insert("max_body_size_mb".into(), json!(v));
-            }
-            if let Some(v) = block_bots {
-                let slugs: Vec<&str> = v
-                    .split(',')
-                    .map(str::trim)
-                    .filter(|s| !s.is_empty())
-                    .collect();
-                fields.insert("blocked_bots".into(), json!(slugs));
-            }
-            set(&client, &hostname, domain.as_deref(), fields).await
-        }
+        ProxyCommand::Set(s) => set(&client, s).await,
         ProxyCommand::Remove { hostname } => {
             let cfg = resolve_proxy(&client, &hostname).await?;
             confirm(
                 ctx.yes,
                 &i18n::f(M::ConfirmRemoveProxy, &[("host", &hostname)]),
             )?;
-            client.delete(&format!("nginx-configs/{}", cfg.id)).await?;
+            client.n_send::<ProxyDelete>(cfg.id).await?;
             success(&i18n::f(M::ProxyRemoved, &[("host", &hostname)]));
             Ok(())
         }
@@ -176,40 +107,33 @@ async fn list(ctx: &Context, client: &Client) -> Result<()> {
 }
 
 /// Upsert: PATCH when the config already exists, otherwise POST (domain required).
-async fn set(
-    client: &Client,
-    hostname: &str,
-    domain: Option<&str>,
-    mut fields: Map<String, Value>,
-) -> Result<()> {
+async fn set(client: &Client, mut set: SetImpl) -> Result<()> {
+    let hostname = set.hostname;
     let existing = {
         let configs: Vec<ProxyConfig> = client.list_all("nginx-configs").await?;
         configs
             .into_iter()
-            .find(|c| c.hostname.eq_ignore_ascii_case(hostname))
+            .find(|c| c.hostname.eq_ignore_ascii_case(&hostname))
     };
 
     if let Some(cfg) = existing {
         // Partial update of an existing config.
-        let _: Value = client
-            .send_json(
-                client
-                    .request(reqwest::Method::PATCH, &format!("nginx-configs/{}", cfg.id))
-                    .json(&Value::Object(fields)),
+        client.n_send_ser::<ProxyPatch>(set.info, cfg.id).await?;
+        success(&i18n::f(M::ProxyUpdated, &[("host", &hostname)]));
+    } else {
+        let d = resolve_domain(client, &set.domain).await?;
+
+        client
+            .n_send_ser::<ProxyNew>(
+                ProxyDecl {
+                    hostname: hostname.clone(),
+                    domain_id: d.id,
+                    inner: set.info,
+                },
+                (),
             )
             .await?;
-        success(&i18n::f(M::ProxyUpdated, &[("host", hostname)]));
-    } else {
-        let Some(domain) = domain else {
-            bail!(i18n::tr(M::NeedDomain));
-        };
-        let d = resolve_domain(client, domain).await?;
-        fields.insert("hostname".into(), json!(hostname));
-        fields.insert("domain_id".into(), json!(d.id));
-        let _: Value = client
-            .post_json("nginx-configs", &Value::Object(fields))
-            .await?;
-        success(&i18n::f(M::ProxyCreated, &[("host", hostname)]));
+        success(&i18n::f(M::ProxyCreated, &[("host", &hostname)]));
     }
     Ok(())
 }
