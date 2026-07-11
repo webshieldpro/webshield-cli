@@ -144,6 +144,48 @@ fn to_fqdn(name: &str, domain: &str) -> String {
     }
 }
 
+/// Normalizes a record value to the canonical form the API validates and stores
+/// (mirrors the control panel): CNAME/NS/PTR — FQDN with a trailing dot,
+/// MX/SRV — trailing dot on the target, TXT — wrapped in quotes.
+fn normalize_content(rr_type: &str, value: &str) -> String {
+    let v = value.trim();
+    if v.is_empty() {
+        return v.to_string();
+    }
+    match rr_type {
+        "CNAME" | "NS" | "PTR" => ensure_trailing_dot(v),
+        "TXT" => {
+            if v.len() >= 2 && v.starts_with('"') && v.ends_with('"') {
+                v.to_string()
+            } else {
+                format!("\"{v}\"")
+            }
+        }
+        "MX" => dot_nth_token(v, 1),
+        "SRV" => dot_nth_token(v, 3),
+        _ => v.to_string(),
+    }
+}
+
+fn ensure_trailing_dot(s: &str) -> String {
+    if s.ends_with('.') {
+        s.to_string()
+    } else {
+        format!("{s}.")
+    }
+}
+
+/// Appends a trailing dot to the n-th whitespace-separated token (the FQDN
+/// target of MX/SRV). Values with fewer tokens are left as-is for the server
+/// to report a format error.
+fn dot_nth_token(value: &str, n: usize) -> String {
+    let mut parts: Vec<String> = value.split_whitespace().map(str::to_string).collect();
+    if let Some(target) = parts.get_mut(n) {
+        *target = ensure_trailing_dot(target);
+    }
+    parts.join(" ")
+}
+
 fn find_rrset<'a>(records: &'a [RRSet], fqdn: &str, rr_type: &str) -> Option<&'a RRSet> {
     let want = fqdn.trim_end_matches('.');
     let ty = rr_type.to_uppercase();
@@ -224,6 +266,9 @@ async fn change(
 ) -> Result<()> {
     let d = resolve_domain(client, domain).await?;
     let ty = rr_type.to_uppercase();
+    // Canonical form also makes set/remove match the server-stored values.
+    let values: Vec<String> = values.iter().map(|v| normalize_content(&ty, v)).collect();
+    let values = values.as_slice();
     let items =
         |vals: &[String]| -> Vec<Value> { vals.iter().map(|v| json!({ "content": v })).collect() };
 
@@ -342,6 +387,46 @@ mod tests {
     }
 
     #[test]
+    fn normalize_content_matches_backend_canonical_forms() {
+        // CNAME/NS/PTR targets get a trailing dot (the backend rejects bare names).
+        assert_eq!(
+            normalize_content("CNAME", "target.example.com"),
+            "target.example.com."
+        );
+        assert_eq!(
+            normalize_content("CNAME", "target.example.com."),
+            "target.example.com."
+        );
+        assert_eq!(
+            normalize_content("NS", "ns1.example.com"),
+            "ns1.example.com."
+        );
+        // MX/SRV: only the FQDN target token is dotted.
+        assert_eq!(
+            normalize_content("MX", "10 mail.example.com"),
+            "10 mail.example.com."
+        );
+        assert_eq!(
+            normalize_content("MX", "10 mail.example.com."),
+            "10 mail.example.com."
+        );
+        assert_eq!(
+            normalize_content("SRV", "5 0 5060 sip.example.com"),
+            "5 0 5060 sip.example.com."
+        );
+        // Malformed MX/SRV are passed through for the server to report the format error.
+        assert_eq!(normalize_content("MX", "10"), "10");
+        // TXT values are quoted, already-quoted values are untouched.
+        assert_eq!(normalize_content("TXT", "v=spf1 -all"), "\"v=spf1 -all\"");
+        assert_eq!(
+            normalize_content("TXT", "\"v=spf1 -all\""),
+            "\"v=spf1 -all\""
+        );
+        // Address records are untouched.
+        assert_eq!(normalize_content("A", "1.1.1.1"), "1.1.1.1");
+    }
+
+    #[test]
     fn find_rrset_matches_case_and_dot_insensitively() {
         let rrsets = vec![RRSet {
             name: "www.example.com.".into(),
@@ -404,6 +489,37 @@ mod tests {
             "www",
             "a",
             &["1.1.1.1".to_string()],
+            300,
+            Op::Add,
+        )
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn add_normalizes_cname_target_to_fqdn_with_dot() {
+        let server = MockServer::start().await;
+        mount_domain(&server).await;
+        // The bare target must reach the API with a trailing dot, as the panel does.
+        Mock::given(method("POST"))
+            .and(path("/api/v1/domains/7/records"))
+            .and(body_json(json!({
+                "rrsets": [{
+                    "name": "www", "type": "CNAME", "ttl": 300,
+                    "records": [{"content": "target.example.com."}],
+                }],
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        change(
+            &client(&server),
+            "example.com",
+            "www",
+            "cname",
+            &["target.example.com".to_string()],
             300,
             Op::Add,
         )
