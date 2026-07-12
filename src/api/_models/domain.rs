@@ -28,7 +28,12 @@ pub struct DomainInner {
 
 impl DisplayTable for DomainInner {
     fn headers(&self) -> Vec<&'static str> {
-        vec![i18n::tr(M::HField), i18n::tr(M::HValue)]
+        vec![
+            i18n::tr(M::HId).into(),
+            i18n::tr(M::HDomain).into(),
+            i18n::tr(M::HDelegated).into(),
+            i18n::tr(M::HTariff).into(),
+        ]
     }
 
     fn rows(&self) -> Vec<Vec<String>> {
@@ -36,25 +41,19 @@ impl DisplayTable for DomainInner {
         let no = i18n::tr(M::No);
         let dash = i18n::tr(M::Dash);
 
-        vec![
-            vec![i18n::tr(M::HId).into(), self.id.to_string()],
-            vec![i18n::tr(M::HDomain).into(), self.name.clone()],
-            vec![
-                i18n::tr(M::HDelegated).into(),
-                match self.delegated {
-                    Some(true) => yes.into(),
-                    Some(false) => no.into(),
-                    None => dash.into(),
-                },
-            ],
-            vec![
-                i18n::tr(M::HTariff).into(),
-                self.current_tariff
-                    .as_ref()
-                    .map(|t| t.name.clone())
-                    .unwrap_or_else(|| dash.into()),
-            ],
-        ]
+        vec![vec![
+            self.id.to_string(),
+            self.name.clone(),
+            match self.delegated {
+                Some(true) => yes.into(),
+                Some(false) => no.into(),
+                None => dash.into(),
+            },
+            self.current_tariff
+                .as_ref()
+                .map(|t| t.name.clone())
+                .unwrap_or_else(|| dash.into()),
+        ]]
     }
 }
 

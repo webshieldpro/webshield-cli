@@ -25,6 +25,7 @@ impl<T: DisplayTable + Serialize> ResultingData for T {
 pub enum ProgramRes {
     Table(Box<dyn ResultingData>),
     Str(String),
+    Idle,
 }
 
 impl From<String> for ProgramRes {
@@ -39,5 +40,11 @@ where
 {
     fn from(s: T) -> Self {
         Self::Table(Box::new(s))
+    }
+}
+
+impl From<()> for ProgramRes {
+    fn from(_: ()) -> Self {
+        Self::Idle
     }
 }

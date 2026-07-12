@@ -1,5 +1,6 @@
 //! Output formatting: human-readable tables and JSON for scripts.
 
+use std::fmt::Display;
 use anyhow::Result;
 use clap::ValueEnum;
 use comfy_table::{presets::UTF8_FULL, Cell, ContentArrangement, Table};
@@ -37,14 +38,14 @@ pub fn print_table(headers: &[&str], rows: Vec<Vec<String>>) {
     println!("{table}");
 }
 
-pub fn success(msg: &str) {
+pub fn success<T: Display>(msg: T) {
     eprintln!("{} {}", style("✓").green().bold(), msg);
 }
 
-pub fn info(msg: &str) {
+pub fn info<T: Display>(msg: T) {
     eprintln!("{}", style(msg).dim());
 }
 
-pub fn warn(msg: &str) {
+pub fn warn<T: Display>(msg: T) {
     eprintln!("{} {}", style("!").yellow().bold(), msg);
 }

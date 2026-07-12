@@ -7,6 +7,7 @@ use crate::api::_models::domain::{
 use crate::api::table::ProgramRes;
 use crate::commands::confirm;
 use crate::i18n::{self, M};
+use crate::output::{info, success, warn};
 use crate::Context;
 use anyhow::Result;
 use clap::Subcommand;
@@ -47,78 +48,57 @@ pub async fn run(ctx: &Context, cmd: DomainsCommand) -> Result<ProgramRes> {
                 &i18n::f(M::ConfirmDeleteDomain, &[("name", &domain.name)]),
             )?;
             client.n_send::<DomainDelete>(domain.id).await?;
-            // success(&i18n::f(M::DomainDeleted, &[("name", &domain.name)]));
-            Ok(ProgramRes::from(i18n::f(
-                M::DomainDeleted,
-                &[("name", &domain.name)],
-            )))
+            success(&i18n::f(M::DomainDeleted, &[("name", &domain.name)]));
+
+            Ok(ProgramRes::Idle)
         }
         DomainsCommand::Check { name } => check(&client, &name).await.map(ProgramRes::from),
     }
 }
 
-async fn check(client: &Client, name: &String) -> Result<String> {
+async fn check(client: &Client, name: &String) -> Result<()> {
     let domain = resolve_domain(&client, &name).await?;
 
     let result = client.n_send::<DomainCheckDelegation>(domain.id).await?;
 
     let check: crate::api::models::DelegationCheck = serde_json::from_value(result)?;
     match check.delegated {
-        Some(true) => Ok(i18n::f(M::DelegationOk, &[("name", &domain.name)])),
+        Some(true) => success(i18n::f(M::DelegationOk, &[("name", &domain.name)])),
         Some(false) => {
-            let mut buf = Vec::new();
-
-            buf.push(i18n::f(
+            warn(&i18n::f(
                 M::DelegationNotDelegated,
                 &[("name", &domain.name)],
             ));
 
-            // warn(&i18n::f(
-            //     M::DelegationNotDelegated,
-            //     &[("name", &domain.name)],
-            // ));
-
             if !check.current_ns.is_empty() {
-                // info(&i18n::f(
-                //     M::DelegationCurrentNs,
-                //     &[("ns", &check.current_ns.join(", "))],
-                // ));
-                buf.push(i18n::f(
+                info(&i18n::f(
                     M::DelegationCurrentNs,
                     &[("ns", &check.current_ns.join(", "))],
                 ));
             }
 
             if !check.missing_ns.is_empty() {
-                // warn(&i18n::f(
-                //     M::DelegationMissingNs,
-                //     &[("ns", &check.missing_ns.join(", "))],
-                // ));
-
-                buf.push(i18n::f(
+                warn(&i18n::f(
                     M::DelegationMissingNs,
                     &[("ns", &check.missing_ns.join(", "))],
                 ));
             }
             if !check.extra_ns.is_empty() {
-                // warn(&i18n::f(
-                //     M::DelegationExtraNs,
-                //     &[("ns", &check.extra_ns.join(", "))],
-                // ));
-                buf.push(i18n::f(
+                warn(&i18n::f(
                     M::DelegationExtraNs,
                     &[("ns", &check.extra_ns.join(", "))],
                 ));
             }
             if check.missing_ns.is_empty() && check.extra_ns.is_empty() {
-                // warn(i18n::tr(M::DelegationNoNs));
-                buf.push(i18n::tr(M::DelegationNoNs).to_string());
+                warn(i18n::tr(M::DelegationNoNs));
             }
-            buf.push(i18n::tr(M::DelegationPropagationNote).to_string());
-            Ok(buf.join("\n\n"))
+            info(i18n::tr(M::DelegationPropagationNote));
         }
-        None => Ok(i18n::tr(M::DelegationUnknown).to_string()),
-    }
+        None => {
+            info(i18n::tr(M::DelegationUnknown));
+        }
+    };
+    Ok(())
 }
 
 async fn get(client: &Client, name: &String) -> Result<DomainInner> {
@@ -126,7 +106,7 @@ async fn get(client: &Client, name: &String) -> Result<DomainInner> {
     Ok(domain)
 }
 
-async fn add(client: &Client, name: String, import: String) -> Result<String> {
+async fn add(client: &Client, name: String, import: String) -> Result<()> {
     // let created: crate::api::models::Domain = client.post_json("domains", &body).await?;
     let created = client
         .n_send_ser::<DomainAdd>(
@@ -138,15 +118,12 @@ async fn add(client: &Client, name: String, import: String) -> Result<String> {
         )
         .await?;
 
-    // success(&i18n::f(
-    //     M::DomainCreated,
-    //     &[("name", &created.name), ("id", &created.id.to_string())],
-    // ))
-
-    Ok(i18n::f(
+    success(&i18n::f(
         M::DomainCreated,
         &[("name", &created.name), ("id", &created.id.to_string())],
-    ))
+    ));
+
+    Ok(())
 
     // if ctx.output == OutputFormat::Json {
     //     return print_json(&created);

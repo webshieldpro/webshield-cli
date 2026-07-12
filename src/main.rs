@@ -204,13 +204,20 @@ async fn run() -> Result<()> {
                     clap_complete::generate(Nushell, &mut cmd, name, &mut out)
                 }
             }
-            Ok(ProgramRes::from("ok".to_string()))
+            Ok(ProgramRes::Idle)
         }
     };
 
     match result? {
         ProgramRes::Str(s) => println!("{}", s),
-        ProgramRes::Table(tb) => tb.display_as_table(),
+        ProgramRes::Table(tb) => {
+            if ctx.output == OutputFormat::Table {
+                tb.display_as_table()
+            } else {
+                println!("{}", serde_json::to_string_pretty(&tb.as_json()?)?)
+            }
+        }
+        ProgramRes::Idle => {}
     }
     Ok(())
 }

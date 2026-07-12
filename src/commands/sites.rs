@@ -16,6 +16,7 @@ use crate::api::_models::sites::{
 use crate::api::table::ProgramRes;
 use crate::commands::domains::resolve_domain;
 use crate::i18n::{self, Lang, M};
+use crate::output::success;
 use crate::Context;
 use anyhow::{bail, Context as _, Result};
 use clap::Subcommand;
@@ -84,11 +85,8 @@ pub async fn run(ctx: &Context, cmd: SitesCommand) -> Result<ProgramRes> {
         SitesCommand::Disable { hostname } => {
             let site = resolve_site(&client, &hostname).await?;
             client.n_send::<SiteDisable>(site.id).await?;
-            // success(&i18n::f(M::SiteDisabled, &[("host", &site.hostname)]));
-            Ok(ProgramRes::from(i18n::f(
-                M::SiteDisabled,
-                &[("host", &site.hostname)],
-            )))
+            success(&i18n::f(M::SiteDisabled, &[("host", &site.hostname)]));
+            Ok(ProgramRes::Idle)
         }
     }
 }
@@ -127,9 +125,6 @@ async fn create(client: &Client, hostname: &str, domain: &str) -> Result<SitesLi
 
 async fn files(client: &Client, hostname: &str) -> Result<FilesResponseSite> {
     let site = resolve_site(client, hostname).await?;
-    // let resp: FilesResponse = client
-    //     .get_json(&format!("static-sites/{}/files", site.id))
-    //     .await?;
 
     let resp: FilesResponseSite = client.n_send::<SiteFiles>(site.id).await?;
 
@@ -138,7 +133,7 @@ async fn files(client: &Client, hostname: &str) -> Result<FilesResponseSite> {
 
 // --- Publishing ---
 
-async fn publish(client: &Client, site_id: i64, dir: &Path, dry_run: bool) -> Result<String> {
+async fn publish(client: &Client, site_id: i64, dir: &Path, dry_run: bool) -> Result<()> {
     let root = std::fs::canonicalize(dir)
         .with_context(|| i18n::f(M::DirNotFound, &[("path", &dir.display().to_string())]))?;
     if !root.is_dir() {
@@ -175,29 +170,29 @@ async fn publish(client: &Client, site_id: i64, dir: &Path, dry_run: bool) -> Re
         .collect();
     to_delete.sort();
 
-    // let unchanged = local.len() - to_upload.len();
-    // println!(
-    //     "{}",
-    //     i18n::f(
-    //         M::PublishSummary,
-    //         &[
-    //             ("id", &site_id.to_string()),
-    //             ("local", &local.len().to_string()),
-    //             ("server", &server.len().to_string()),
-    //             ("up", &to_upload.len().to_string()),
-    //             ("del", &to_delete.len().to_string()),
-    //             ("same", &unchanged.to_string()),
-    //         ],
-    //     )
-    // );
+    let unchanged = local.len() - to_upload.len();
+    println!(
+        "{}",
+        i18n::f(
+            M::PublishSummary,
+            &[
+                ("id", &site_id.to_string()),
+                ("local", &local.len().to_string()),
+                ("server", &server.len().to_string()),
+                ("up", &to_upload.len().to_string()),
+                ("del", &to_delete.len().to_string()),
+                ("same", &unchanged.to_string()),
+            ],
+        )
+    );
 
     if to_upload.is_empty() && to_delete.is_empty() {
-        // crate::output::info(i18n::tr(M::PublishNoChanges));
-        return Ok(i18n::tr(M::PublishNoChanges).to_string());
+        crate::output::info(i18n::tr(M::PublishNoChanges));
+        return Ok(());
     }
     if dry_run {
-        // crate::output::info(i18n::tr(M::PublishDryRun));
-        return Ok(i18n::tr(M::PublishDryRun).to_string());
+        crate::output::info(i18n::tr(M::PublishDryRun));
+        return Ok(());
     }
 
     // 4. Upload changed files in batches, concurrently.
@@ -210,8 +205,8 @@ async fn publish(client: &Client, site_id: i64, dir: &Path, dry_run: bool) -> Re
     }
     // 6. Publish the snapshot.
     client.n_send::<SitePublish>(site_id).await?;
-    // success(i18n::tr(M::Published));
-    Ok(i18n::tr(M::Published).to_string())
+    success(i18n::tr(M::Published));
+    Ok(())
 }
 
 /// Walks the directory and computes the MD5 of every file (symlinks are skipped).

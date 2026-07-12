@@ -128,6 +128,7 @@ enum Op {
 
 async fn post_rrset(client: &Client, domain_id: i64, rrset: Value) -> Result<()> {
     let body = json!({ "rrsets": [rrset] });
+    // TODO
     let _: Value = client
         .post_json(&format!("domains/{domain_id}/records"), &body)
         .await?;
@@ -311,14 +312,15 @@ async fn dnssec(client: &Client, cmd: DnssecCommand) -> Result<DnssecResp> {
         DnssecCommand::Status { domain } => {
             let d = resolve_domain(client, &domain).await?;
 
-            client.n_send::<DnssecGet>(d.id).await
+            let r = client.n_send::<DnssecGet>(d.id).await?;
+            Ok(r)
             // let result: Value = client.get_json(&format!("domains/{}/dnssec", d.id)).await?;
             // print_json(&result)
         }
         DnssecCommand::Enable { domain } => {
             let d = resolve_domain(client, &domain).await?;
-            client.n_send::<DnssecPost>(d.id).await
-
+            let r = client.n_send::<DnssecPost>(d.id).await?;
+            Ok(r)
             // success(i18n::tr(M::DnssecEnabled));
             // print_json(&result)
         }
@@ -336,7 +338,8 @@ async fn dnssec(client: &Client, cmd: DnssecCommand) -> Result<DnssecResp> {
                 None
             };
 
-            client.n_send::<DnssecDelete>((d.id, has_force)).await
+            let r = client.n_send::<DnssecDelete>((d.id, has_force)).await?;
+            Ok(r)
             // success(i18n::tr(M::DnssecDisabled));
             // print_json(&result)
         }
