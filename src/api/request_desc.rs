@@ -1,7 +1,7 @@
 use reqwest::Method;
 use serde::de::DeserializeOwned;
 
-pub trait MakeReq {
+pub trait RequestDesc {
     type Params;
     type Request;
     type Response: DeserializeOwned;

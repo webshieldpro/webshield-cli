@@ -1,17 +1,21 @@
 #![allow(refining_impl_trait_reachable)]
 
-use crate::api::get_url::MakeReq;
-use reqwest::Method;
+use crate::api::request_desc::RequestDesc;
+use crate::api::table::DisplayTable;
+use crate::i18n;
+use crate::i18n::M;
+use crate::output::success;
 use reqwest::multipart::Form;
+use reqwest::Method;
 use serde::{Deserialize, Serialize};
 
 pub struct SiteAdd;
 #[derive(Serialize)]
 pub struct SiteAddReq {
     pub hostname: String,
-    pub domain_id: i64
+    pub domain_id: i64,
 }
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct SitesListInner {
     pub id: i64,
     pub hostname: String,
@@ -25,7 +29,24 @@ pub struct SitesListInner {
     pub size_bytes: Option<i64>,
 }
 
-impl MakeReq for SiteAdd {
+impl DisplayTable for SitesListInner {
+    fn headers(&self) -> Vec<&'static str> {
+        unreachable!()
+    }
+
+    fn rows(&self) -> Vec<Vec<String>> {
+        unreachable!()
+    }
+
+    fn display_as_table(&self) {
+        success(&i18n::f(
+            M::SiteCreated,
+            &[("host", &self.hostname), ("id", &self.id.to_string())],
+        ));
+    }
+}
+
+impl RequestDesc for SiteAdd {
     type Params = ();
     type Request = SiteAddReq;
     type Response = SitesListInner;
@@ -41,12 +62,12 @@ impl MakeReq for SiteAdd {
 
 pub struct Sites;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct SitesList {
     pub results: Vec<SitesListInner>,
 }
 
-impl MakeReq for Sites {
+impl RequestDesc for Sites {
     type Params = ();
     type Request = ();
     type Response = SitesList;
@@ -60,14 +81,57 @@ impl MakeReq for Sites {
     }
 }
 
+impl DisplayTable for SitesList {
+    fn headers(&self) -> Vec<&'static str> {
+        vec![
+            i18n::tr(M::HId),
+            i18n::tr(M::HHost),
+            i18n::tr(M::HDomain),
+            i18n::tr(M::HStatus),
+            i18n::tr(M::HVersion),
+            i18n::tr(M::HSize),
+        ]
+    }
+
+    fn rows(&self) -> Vec<Vec<String>> {
+        self.results
+            .iter()
+            .map(|s| {
+                vec![
+                    s.id.to_string(),
+                    s.hostname.clone(),
+                    s.domain_name.clone().unwrap_or_default(),
+                    s.status.clone().unwrap_or_default(),
+                    s.content_version.map(|v| v.to_string()).unwrap_or_default(),
+                    s.size_bytes.map(|b| format!("{}B", b)).unwrap_or_default(),
+                ]
+            })
+            .collect()
+    }
+}
+
 pub struct SiteFiles;
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct FilesResponseSite {
     #[serde(default)]
     pub files: Vec<ServerFileSite>,
 }
 
-impl MakeReq for SiteFiles {
+impl DisplayTable for FilesResponseSite {
+    fn headers(&self) -> Vec<&'static str> {
+        vec![i18n::tr(M::HPath), i18n::tr(M::HEtag)]
+    }
+
+    fn rows(&self) -> Vec<Vec<String>> {
+        self.files
+            .iter()
+            .filter(|f| !f.is_dir)
+            .map(|f| vec![f.path.clone(), f.etag.clone().unwrap_or_default()])
+            .collect()
+    }
+}
+
+impl RequestDesc for SiteFiles {
     type Params = i64;
     type Request = ();
     type Response = FilesResponseSite;
@@ -81,7 +145,7 @@ impl MakeReq for SiteFiles {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct ServerFileSite {
     pub path: String,
     #[serde(default)]
@@ -92,7 +156,7 @@ pub struct ServerFileSite {
 
 pub struct SiteDisable;
 
-impl MakeReq for SiteDisable {
+impl RequestDesc for SiteDisable {
     type Params = i64;
     type Request = ();
     type Response = ();
@@ -108,7 +172,7 @@ impl MakeReq for SiteDisable {
 
 pub struct SitePublish;
 
-impl MakeReq for SitePublish {
+impl RequestDesc for SitePublish {
     type Params = i64;
     type Request = ();
     type Response = ();
@@ -123,7 +187,7 @@ impl MakeReq for SitePublish {
 }
 
 pub struct SiteFilesUploadBatch;
-impl MakeReq for SiteFilesUploadBatch {
+impl RequestDesc for SiteFilesUploadBatch {
     type Params = i64;
     type Request = Form;
     type Response = ();
@@ -140,10 +204,10 @@ impl MakeReq for SiteFilesUploadBatch {
 pub struct SiteFilesDeleteBatch;
 #[derive(Debug, Serialize)]
 pub struct SiteFilesPaths {
-    pub paths: Vec<String>
+    pub paths: Vec<String>,
 }
 
-impl MakeReq for SiteFilesDeleteBatch {
+impl RequestDesc for SiteFilesDeleteBatch {
     type Params = i64;
     type Request = SiteFilesPaths;
     type Response = serde_json::Value;

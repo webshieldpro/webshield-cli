@@ -1,12 +1,14 @@
 //! Edge settings of proxied/redirect hosts (`/nginx-configs`, scope `proxy`).
 
-use crate::api::_models::proxy::{ProxyDecl, ProxyDelete, ProxyInfo, ProxyNew, ProxyPatch};
-use crate::api::models::ProxyConfig;
+use crate::api::_models::proxy::{
+    Proxies, ProxyData, ProxyDecl, ProxyDelete, ProxyInfo, ProxyNew, ProxyPatch, ProxyResolve,
+};
+// use crate::api::models::ProxyConfig;
+use crate::api::table::ProgramRes;
 use crate::api::Client;
 use crate::commands::confirm;
 use crate::commands::domains::resolve_domain;
 use crate::i18n::{self, M};
-use crate::output::{print_json, print_table, success, OutputFormat};
 use crate::Context;
 use anyhow::Result;
 use clap::{Args, Subcommand};
@@ -34,92 +36,63 @@ pub enum ProxyCommand {
     Remove { hostname: String },
 }
 
-pub async fn run(ctx: &Context, cmd: ProxyCommand) -> Result<()> {
+pub async fn run(ctx: &Context, cmd: ProxyCommand) -> Result<ProgramRes> {
     let client = ctx.client()?;
     match cmd {
-        ProxyCommand::List => list(ctx, &client).await,
-        ProxyCommand::Get { hostname } => {
-            let cfg = resolve_proxy(&client, &hostname).await?;
-            print_json(&cfg)
-        }
-        ProxyCommand::Set(s) => set(&client, s).await,
+        ProxyCommand::List => list( &client)
+            .await
+            .map(ProgramRes::from),
+        ProxyCommand::Get { hostname } => resolve_proxy(&client, &hostname)
+            .await
+            .map(ProgramRes::from),
+        ProxyCommand::Set(s) => set(&client, s).await.map(ProgramRes::from),
+
         ProxyCommand::Remove { hostname } => {
             let cfg = resolve_proxy(&client, &hostname).await?;
+            
             confirm(
                 ctx.yes,
                 &i18n::f(M::ConfirmRemoveProxy, &[("host", &hostname)]),
             )?;
-            client.n_send::<ProxyDelete>(cfg.id).await?;
-            success(&i18n::f(M::ProxyRemoved, &[("host", &hostname)]));
-            Ok(())
+            
+            client.n_send::<ProxyDelete>(cfg.domain_id).await?;
+            Ok(ProgramRes::from(i18n::f(
+                M::ProxyRemoved,
+                &[("host", &hostname)],
+            )))
         }
     }
 }
 
-async fn resolve_proxy(client: &Client, hostname: &str) -> Result<ProxyConfig> {
-    let needle = hostname.trim().to_lowercase();
-    let configs: Vec<ProxyConfig> = client.list_all("nginx-configs").await?;
-    configs
+async fn _find_config(client: &Client, hostname: &str) -> Result<ProxyData> {
+    let configs = client.n_send::<ProxyResolve>(()).await?.into_inner();
+    let c = configs
         .into_iter()
-        .find(|c| c.hostname.eq_ignore_ascii_case(&needle))
-        .ok_or_else(|| anyhow::anyhow!(i18n::f(M::NotFoundProxy, &[("host", hostname)])))
+        .find(|c| c.hostname.eq_ignore_ascii_case(hostname));
+    c.ok_or_else(|| anyhow::anyhow!(i18n::f(M::NotFoundProxy, &[("host", hostname)])))
 }
 
-async fn list(ctx: &Context, client: &Client) -> Result<()> {
-    let configs: Vec<ProxyConfig> = client.list_all("nginx-configs").await?;
-    if ctx.output == OutputFormat::Json {
-        return print_json(&configs);
-    }
-    let yes = i18n::tr(M::Yes);
-    let rows = configs
-        .iter()
-        .map(|c| {
-            vec![
-                c.hostname.clone(),
-                c.domain_name.clone().unwrap_or_default(),
-                c.mode.clone().unwrap_or_default(),
-                c.redirect_target.clone().unwrap_or_default(),
-                if c.ssl_required.unwrap_or(false) {
-                    yes.into()
-                } else {
-                    String::new()
-                },
-                if c.bot_protection_enabled.unwrap_or(false) {
-                    yes.into()
-                } else {
-                    String::new()
-                },
-            ]
-        })
-        .collect();
-    print_table(
-        &[
-            i18n::tr(M::HHost),
-            i18n::tr(M::HDomain),
-            i18n::tr(M::HMode),
-            i18n::tr(M::HTarget),
-            i18n::tr(M::HSsl),
-            i18n::tr(M::HBotProt),
-        ],
-        rows,
-    );
-    Ok(())
+async fn resolve_proxy(client: &Client, hostname: &str) -> Result<ProxyData> {
+    let needle = hostname.trim().to_lowercase();
+    _find_config(client, &needle).await
+}
+
+async fn list(client: &Client) -> Result<Proxies> {
+    let configs = client.n_send::<ProxyResolve>(()).await?;
+    Ok(configs)
 }
 
 /// Upsert: PATCH when the config already exists, otherwise POST (domain required).
-async fn set(client: &Client, mut set: SetImpl) -> Result<()> {
+async fn set(client: &Client, mut set: SetImpl) -> Result<String> {
     let hostname = set.hostname;
-    let existing = {
-        let configs: Vec<ProxyConfig> = client.list_all("nginx-configs").await?;
-        configs
-            .into_iter()
-            .find(|c| c.hostname.eq_ignore_ascii_case(&hostname))
-    };
+    let existing = _find_config(client, &hostname).await.ok();
 
-    if let Some(cfg) = existing {
+    let res = if let Some(cfg) = existing {
         // Partial update of an existing config.
-        client.n_send_ser::<ProxyPatch>(set.info, cfg.id).await?;
-        success(&i18n::f(M::ProxyUpdated, &[("host", &hostname)]));
+        client
+            .n_send_ser::<ProxyPatch>(set.info, cfg.domain_id)
+            .await?;
+        i18n::f(M::ProxyUpdated, &[("host", &hostname)])
     } else {
         let d = resolve_domain(client, &set.domain).await?;
 
@@ -133,7 +106,7 @@ async fn set(client: &Client, mut set: SetImpl) -> Result<()> {
                 (),
             )
             .await?;
-        success(&i18n::f(M::ProxyCreated, &[("host", &hostname)]));
-    }
-    Ok(())
+        i18n::f(M::ProxyCreated, &[("host", &hostname)])
+    };
+    Ok(res)
 }

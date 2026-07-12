@@ -48,38 +48,38 @@ pub struct DelegationCheck {
     pub detail: Option<String>,
 }
 
-/// A single record value (content + disabled flag).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RecordItem {
-    pub content: String,
-    #[serde(default)]
-    pub disabled: bool,
-}
-
-/// A set of records sharing one name and type (rrset).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RRSet {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub rr_type: String,
-    #[serde(default)]
-    pub ttl: Option<i64>,
-    #[serde(default)]
-    pub records: Vec<RecordItem>,
-    /// Proxying flag (for A/AAAA/CNAME).
-    #[serde(default)]
-    pub proxied: bool,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct RecordsResponse {
-    #[serde(default)]
-    pub rrsets: Vec<RRSet>,
-    #[serde(default)]
-    pub records_used: Option<i64>,
-    #[serde(default)]
-    pub records_limit: Option<i64>,
-}
+// /// A single record value (content + disabled flag).
+// #[derive(Debug, Clone, Serialize, Deserialize)]
+// pub struct RecordItem {
+//     pub content: String,
+//     #[serde(default)]
+//     pub disabled: bool,
+// }
+// 
+// /// A set of records sharing one name and type (rrset).
+// #[derive(Debug, Clone, Serialize, Deserialize)]
+// pub struct RRSet {
+//     pub name: String,
+//     #[serde(rename = "type")]
+//     pub rr_type: String,
+//     #[serde(default)]
+//     pub ttl: Option<i64>,
+//     #[serde(default)]
+//     pub records: Vec<RecordItem>,
+//     /// Proxying flag (for A/AAAA/CNAME).
+//     #[serde(default)]
+//     pub proxied: bool,
+// }
+// 
+// #[derive(Debug, Deserialize)]
+// pub struct RecordsResponse {
+//     #[serde(default)]
+//     pub rrsets: Vec<RRSet>,
+//     #[serde(default)]
+//     pub records_used: Option<i64>,
+//     #[serde(default)]
+//     pub records_limit: Option<i64>,
+// }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StaticSite {

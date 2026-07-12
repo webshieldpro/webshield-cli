@@ -1,17 +1,18 @@
-use crate::api::get_url::MakeReq;
+use crate::api::request_desc::RequestDesc;
+use crate::api::table::DisplayTable;
+use crate::i18n;
+use crate::i18n::M;
 use reqwest::Method;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::marker::PhantomData;
 
 pub struct StatBans;
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct BanStats {
-
     pub bans: Vec<Value>, // TODO check ban signature
 }
 
-impl MakeReq for StatBans {
+impl RequestDesc for StatBans {
     type Params = (i64, String);
     type Request = ();
     type Response = BanStats;
@@ -25,7 +26,43 @@ impl MakeReq for StatBans {
     }
 }
 
-#[derive(Deserialize, Debug)]
+impl DisplayTable for BanStats {
+    fn headers(&self) -> Vec<&'static str> {
+        vec![
+            i18n::tr(M::HIp),
+            i18n::tr(M::HType),
+            i18n::tr(M::HReason),
+            i18n::tr(M::HLastSeen),
+            i18n::tr(M::HRequests),
+        ]
+    }
+
+    fn rows(&self) -> Vec<Vec<String>> {
+        self.bans
+            .iter()
+            .map(|b| {
+                let s = |k: &str| b.get(k).map(|v| v.to_string()).unwrap_or_default(); // TODO conversion of Value to string
+                vec![
+                    s("ip"),
+                    s("type"),
+                    s("reason"),
+                    s("last_seen"),
+                    s("requests"),
+                ]
+            })
+            .collect()
+    }
+
+    fn display_as_table(&self) {
+        if self.bans.is_empty() {
+            crate::output::info(i18n::tr(M::NoBans));
+        } else {
+            DisplayTable::display_as_table(self)
+        }
+    }
+}
+
+#[derive(Deserialize, Serialize)]
 pub struct Totals {
     requests: u64,
     status_2xx: u64,
@@ -34,9 +71,8 @@ pub struct Totals {
     status_5xx: u64,
 }
 
-
 pub struct StatDomains;
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize)]
 pub struct SummaryStats {
     domain: String,
     generated_at: String,
@@ -46,7 +82,7 @@ pub struct SummaryStats {
     totals: Totals,
 }
 
-impl MakeReq for StatDomains {
+impl RequestDesc for StatDomains {
     type Params = (i64, String);
     type Request = ();
     type Response = SummaryStats;
@@ -60,5 +96,19 @@ impl MakeReq for StatDomains {
 
     fn method() -> Method {
         Method::GET
+    }
+}
+
+impl DisplayTable for SummaryStats {
+    fn headers(&self) -> Vec<&'static str> {
+        todo!()
+    }
+
+    fn rows(&self) -> Vec<Vec<String>> {
+        todo!()
+    }
+
+    fn display_as_table(&self) {
+        println!("{}", serde_json::to_string_pretty(self).unwrap());
     }
 }

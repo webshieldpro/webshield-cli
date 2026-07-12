@@ -2,11 +2,11 @@
 //! DRF errors (`{"detail": …}` or a field error map) are unwrapped into readable text.
 
 use super::models::Page;
-use crate::api::get_url::MakeReq;
+use crate::api::request_desc::RequestDesc;
 use crate::i18n::{self, M};
 use anyhow::{anyhow, bail, Context, Result};
-use reqwest::{Method, RequestBuilder, Response, StatusCode};
 use reqwest::multipart::Form;
+use reqwest::{Method, RequestBuilder, Response, StatusCode};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::Value;
@@ -47,33 +47,45 @@ impl Client {
         serde_json::from_value(value).context(i18n::tr(M::ErrParse))
     }
 
-    fn n_make_request<R: MakeReq>(&self, params: R::Params) -> RequestBuilder {
+    fn n_make_request<R: RequestDesc>(&self, params: R::Params) -> RequestBuilder {
         self.request(R::method(), R::get_url(params).as_ref())
     }
 
-    pub async fn n_send<R: MakeReq<Request=()>>(&self, params: R::Params) -> Result<R::Response> {
+    pub async fn n_send<R: RequestDesc<Request = ()>>(
+        &self,
+        params: R::Params,
+    ) -> Result<R::Response> {
         self.send_json(self.n_make_request::<R>(params)).await
     }
 
-    pub async fn n_send_multipart<R: MakeReq<Request=Form>>(&self, params: R::Params, form: Form) -> Result<R::Response> {
-        self.send_json(self.n_make_request::<R>(params).multipart(form)).await
-    }
-
-    pub async fn n_send_ser<R: MakeReq>(
+    pub async fn n_send_multipart<R: RequestDesc<Request = Form>>(
         &self,
-        dt: R::Request,
         params: R::Params,
-    ) -> Result<R::Response> where R::Request: Serialize {
-        self.send_json(self.n_make_request::<R>(params).json(&dt)).await
+        form: Form,
+    ) -> Result<R::Response> {
+        self.send_json(self.n_make_request::<R>(params).multipart(form))
+            .await
     }
 
-    async fn n_send_json<T: DeserializeOwned + MakeReq, D: Serialize>(
+    pub async fn n_send_ser<R: RequestDesc>(
         &self,
-        dt: &D,
-        params: T::Params,
-    ) -> Result<T> {
-        self.send_json(self.n_make_request::<T>(params).json(dt)).await
+        req: R::Request,
+        params: R::Params,
+    ) -> Result<R::Response>
+    where
+        R::Request: Serialize,
+    {
+        self.send_json(self.n_make_request::<R>(params).json(&req))
+            .await
     }
+
+    // async fn n_send_json<R: DeserializeOwned + RequestDesc, D: Serialize>(
+    //     &self,
+    //     dt: &D,
+    //     params: R::Params,
+    // ) -> Result<R> {
+    //     self.send_json(self.n_make_request::<R>(params).json(dt)).await
+    // }
 
     /// Sends a request and returns raw JSON (or `Null` for an empty body).
     async fn send_value(&self, rb: RequestBuilder) -> Result<Value> {

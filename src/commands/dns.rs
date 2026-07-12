@@ -9,16 +9,17 @@
 //! Commands: `add` — default POST (the server merges), `remove` — DELETE of specific
 //! values (or the whole rrset), `set` — client-side reconcile (DELETE extras + POST targets).
 
+use crate::api::Client;
+use crate::api::_models::dns::{
+    DNSDomainRecords, DnssecDelete, DnssecGet, DnssecPost, DnssecResp, RRSet, RRSetList,
+};
+use crate::api::table::ProgramRes;
+use crate::commands::domains::resolve_domain;
+use crate::i18n::{self, M};
+use crate::Context;
 use anyhow::{bail, Result};
 use clap::Subcommand;
 use serde_json::{json, Value};
-
-use crate::api::models::{RRSet, RecordsResponse};
-use crate::api::Client;
-use crate::commands::domains::resolve_domain;
-use crate::i18n::{self, M};
-use crate::output::{print_json, print_table, success, OutputFormat};
-use crate::Context;
 
 #[derive(Subcommand)]
 pub enum DnsCommand {
@@ -83,31 +84,39 @@ pub enum DnssecCommand {
     },
 }
 
-pub async fn run(ctx: &Context, cmd: DnsCommand) -> Result<()> {
+pub async fn run(ctx: &Context, cmd: DnsCommand) -> Result<ProgramRes> {
     let client = ctx.client()?;
     match cmd {
-        DnsCommand::List { domain, rr_type } => list(ctx, &client, &domain, rr_type).await,
+        DnsCommand::List { domain, rr_type } => {
+            list(&client, &domain, rr_type).await.map(ProgramRes::from)
+        }
         DnsCommand::Add {
             domain,
             name,
             rr_type,
             value,
             ttl,
-        } => change(&client, &domain, &name, &rr_type, &value, ttl, Op::Add).await,
+        } => change(&client, &domain, &name, &rr_type, &value, ttl, Op::Add)
+            .await
+            .map(ProgramRes::from),
         DnsCommand::Set {
             domain,
             name,
             rr_type,
             value,
             ttl,
-        } => change(&client, &domain, &name, &rr_type, &value, ttl, Op::Set).await,
+        } => change(&client, &domain, &name, &rr_type, &value, ttl, Op::Set)
+            .await
+            .map(ProgramRes::from),
         DnsCommand::Remove {
             domain,
             name,
             rr_type,
             value,
-        } => change(&client, &domain, &name, &rr_type, &value, 0, Op::Remove).await,
-        DnsCommand::Dnssec(sub) => dnssec(&client, sub).await,
+        } => change(&client, &domain, &name, &rr_type, &value, 0, Op::Remove)
+            .await
+            .map(ProgramRes::from),
+        DnsCommand::Dnssec(sub) => dnssec(&client, sub).await.map(ProgramRes::from),
     }
 }
 
@@ -115,12 +124,6 @@ enum Op {
     Add,
     Set,
     Remove,
-}
-
-async fn fetch_records(client: &Client, domain_id: i64) -> Result<RecordsResponse> {
-    client
-        .get_json(&format!("domains/{domain_id}/records"))
-        .await
 }
 
 async fn post_rrset(client: &Client, domain_id: i64, rrset: Value) -> Result<()> {
@@ -195,63 +198,35 @@ fn find_rrset<'a>(records: &'a [RRSet], fqdn: &str, rr_type: &str) -> Option<&'a
     })
 }
 
-async fn list(ctx: &Context, client: &Client, domain: &str, rr_type: Option<String>) -> Result<()> {
+async fn list(client: &Client, domain: &str, rr_type: Option<String>) -> Result<RRSetList> {
     let d = resolve_domain(client, domain).await?;
-    let resp = fetch_records(client, d.id).await?;
+    let resp = client.n_send::<DNSDomainRecords>(d.id).await?;
     let filter = rr_type.map(|t| t.to_uppercase());
-    let rrsets: Vec<&RRSet> = resp
+    let rrsets: RRSetList = resp
         .rrsets
-        .iter()
+        .into_iter()
         .filter(|r| {
             filter
                 .as_ref()
                 .is_none_or(|f| r.rr_type.eq_ignore_ascii_case(f))
         })
-        .collect();
+        .collect::<Vec<RRSet>>()
+        .into();
 
-    if ctx.output == OutputFormat::Json {
-        return print_json(&rrsets);
-    }
-    let yes = i18n::tr(M::Yes);
-    let rows = rrsets
-        .iter()
-        .map(|r| {
-            let values = r
-                .records
-                .iter()
-                .map(|rec| rec.content.clone())
-                .collect::<Vec<_>>()
-                .join(", ");
-            vec![
-                r.name.clone(),
-                r.rr_type.clone(),
-                r.ttl.map(|t| t.to_string()).unwrap_or_default(),
-                if r.proxied { yes.into() } else { String::new() },
-                values,
-            ]
-        })
-        .collect();
-    print_table(
-        &[
-            i18n::tr(M::HName),
-            i18n::tr(M::HType),
-            i18n::tr(M::HTtl),
-            i18n::tr(M::HProxy),
-            i18n::tr(M::HValues),
-        ],
-        rows,
-    );
-    if let Some(used) = resp.records_used {
-        let limit = resp
-            .records_limit
-            .map(|l| l.to_string())
-            .unwrap_or_else(|| "∞".into());
-        crate::output::info(&i18n::f(
-            M::RecordsCount,
-            &[("used", &used.to_string()), ("limit", &limit)],
-        ));
-    }
-    Ok(())
+    // if ctx.output == OutputFormat::Json {
+    //     return print_json(&rrsets);
+    // }
+    Ok(rrsets)
+    // if let Some(used) = resp.records_used {
+    //     let limit = resp
+    //         .records_limit
+    //         .map(|l| l.to_string())
+    //         .unwrap_or_else(|| "∞".into());
+    //     crate::output::info(&i18n::f(
+    //         M::RecordsCount,
+    //         &[("used", &used.to_string()), ("limit", &limit)],
+    //     ));
+    // }
 }
 
 /// Single entry point for add/set/remove — they differ only in the rrsets they build.
@@ -263,7 +238,7 @@ async fn change(
     values: &[String],
     ttl: i64,
     op: Op,
-) -> Result<()> {
+) -> Result<String> {
     let d = resolve_domain(client, domain).await?;
     let ty = rr_type.to_uppercase();
     // Canonical form also makes set/remove match the server-stored values.
@@ -280,7 +255,7 @@ async fn change(
         }
         Op::Set => {
             let fqdn = to_fqdn(name, &d.name);
-            let resp = fetch_records(client, d.id).await?;
+            let resp = client.n_send::<DNSDomainRecords>(d.id).await?;
             let current: Vec<String> = find_rrset(&resp.rrsets, &fqdn, &ty)
                 .map(|r| r.records.iter().map(|rec| rec.content.clone()).collect())
                 .unwrap_or_default();
@@ -300,7 +275,7 @@ async fn change(
         Op::Remove => {
             let targets: Vec<String> = if values.is_empty() {
                 let fqdn = to_fqdn(name, &d.name);
-                let resp = fetch_records(client, d.id).await?;
+                let resp = client.n_send::<DNSDomainRecords>(d.id).await?;
                 let rrset = find_rrset(&resp.rrsets, &fqdn, &ty).ok_or_else(|| {
                     anyhow::anyhow!(i18n::f(M::RecordNotFound, &[("name", name), ("type", &ty)]))
                 })?;
@@ -320,7 +295,7 @@ async fn change(
         }
     };
 
-    success(&i18n::f(
+    Ok(i18n::f(
         msg,
         &[
             ("name", name),
@@ -328,35 +303,42 @@ async fn change(
             ("domain", &d.name),
             ("count", &count.to_string()),
         ],
-    ));
-    Ok(())
+    ))
 }
 
-async fn dnssec(client: &Client, cmd: DnssecCommand) -> Result<()> {
+async fn dnssec(client: &Client, cmd: DnssecCommand) -> Result<DnssecResp> {
     match cmd {
         DnssecCommand::Status { domain } => {
             let d = resolve_domain(client, &domain).await?;
-            let result: Value = client.get_json(&format!("domains/{}/dnssec", d.id)).await?;
-            print_json(&result)
+
+            client.n_send::<DnssecGet>(d.id).await
+            // let result: Value = client.get_json(&format!("domains/{}/dnssec", d.id)).await?;
+            // print_json(&result)
         }
         DnssecCommand::Enable { domain } => {
             let d = resolve_domain(client, &domain).await?;
-            let result = client
-                .post_empty(&format!("domains/{}/dnssec", d.id))
-                .await?;
-            success(i18n::tr(M::DnssecEnabled));
-            print_json(&result)
+            client.n_send::<DnssecPost>(d.id).await
+
+            // success(i18n::tr(M::DnssecEnabled));
+            // print_json(&result)
         }
         DnssecCommand::Disable { domain, force } => {
             let d = resolve_domain(client, &domain).await?;
-            let path = if force {
-                format!("domains/{}/dnssec?force=true", d.id)
+            // let path = if force {
+            //     format!("domains/{}/dnssec?force=true", d.id)
+            // } else {
+            //     format!("domains/{}/dnssec", d.id)
+            // };
+            // let result = client.delete(&path).await?;
+            let has_force = if force {
+                Some("?force=true".to_string())
             } else {
-                format!("domains/{}/dnssec", d.id)
+                None
             };
-            let result = client.delete(&path).await?;
-            success(i18n::tr(M::DnssecDisabled));
-            print_json(&result)
+
+            client.n_send::<DnssecDelete>((d.id, has_force)).await
+            // success(i18n::tr(M::DnssecDisabled));
+            // print_json(&result)
         }
     }
 }

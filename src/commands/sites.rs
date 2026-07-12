@@ -8,11 +8,14 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::api::_models::sites::{FilesResponseSite, SiteAdd, SiteAddReq, SiteDisable, SiteFiles, SiteFilesDeleteBatch, SiteFilesPaths, SiteFilesUploadBatch, SitePublish, Sites, SitesList, SitesListInner};
 use crate::api::Client;
+use crate::api::_models::sites::{
+    FilesResponseSite, SiteAdd, SiteAddReq, SiteDisable, SiteFiles, SiteFilesDeleteBatch,
+    SiteFilesPaths, SiteFilesUploadBatch, SitePublish, Sites, SitesList, SitesListInner,
+};
+use crate::api::table::ProgramRes;
 use crate::commands::domains::resolve_domain;
 use crate::i18n::{self, Lang, M};
-use crate::output::{print_json, print_table, success, OutputFormat};
 use crate::Context;
 use anyhow::{bail, Context as _, Result};
 use clap::Subcommand;
@@ -20,8 +23,6 @@ use futures::stream::{self, StreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
 use md5::{Digest, Md5};
 use reqwest::multipart::{Form, Part};
-use reqwest::Method;
-use serde_json::{json, Value};
 
 // Batch limits (see server-side restrictions): 100 is the Django
 // DATA_UPLOAD_MAX_NUMBER_FILES ceiling, 32 MB is a sane size for one multipart.
@@ -62,26 +63,32 @@ pub enum SitesCommand {
     Disable { hostname: String },
 }
 
-pub async fn run(ctx: &Context, cmd: SitesCommand) -> Result<()> {
+pub async fn run(ctx: &Context, cmd: SitesCommand) -> Result<ProgramRes> {
     let client = ctx.client()?;
     match cmd {
-        SitesCommand::List => list(ctx, &client).await,
-        SitesCommand::Create { hostname, domain } => create(&client, &hostname, &domain).await,
+        SitesCommand::List => list(&client).await.map(ProgramRes::from),
+        SitesCommand::Create { hostname, domain } => create(&client, &hostname, &domain)
+            .await
+            .map(ProgramRes::from),
         SitesCommand::Publish {
             hostname,
             dir,
             dry_run,
         } => {
             let site = resolve_site(&client, &hostname).await?;
-            publish(&client, site.id, &dir, dry_run).await
+            publish(&client, site.id, &dir, dry_run)
+                .await
+                .map(ProgramRes::from)
         }
-        SitesCommand::Files { hostname } => files(ctx, &client, &hostname).await,
+        SitesCommand::Files { hostname } => files(&client, &hostname).await.map(ProgramRes::from),
         SitesCommand::Disable { hostname } => {
             let site = resolve_site(&client, &hostname).await?;
-            client.n_send::<SiteDisable>(site.id)
-                .await?;
-            success(&i18n::f(M::SiteDisabled, &[("host", &site.hostname)]));
-            Ok(())
+            client.n_send::<SiteDisable>(site.id).await?;
+            // success(&i18n::f(M::SiteDisabled, &[("host", &site.hostname)]));
+            Ok(ProgramRes::from(i18n::f(
+                M::SiteDisabled,
+                &[("host", &site.hostname)],
+            )))
         }
     }
 }
@@ -98,52 +105,27 @@ async fn resolve_site(client: &Client, hostname: &str) -> Result<SitesListInner>
         .ok_or_else(|| anyhow::anyhow!(i18n::f(M::NotFoundSite, &[("host", hostname)])))
 }
 
-async fn list(ctx: &Context, client: &Client) -> Result<()> {
+async fn list(client: &Client) -> Result<SitesList> {
     let sites: SitesList = client.n_send::<Sites>(()).await?;
-
-    let rows = sites
-        .results
-        .iter()
-        .map(|s| {
-            vec![
-                s.id.to_string(),
-                s.hostname.clone(),
-                s.domain_name.clone().unwrap_or_default(),
-                s.status.clone().unwrap_or_default(),
-                s.content_version.map(|v| v.to_string()).unwrap_or_default(),
-                s.size_bytes.map(fmt_size).unwrap_or_default(),
-            ]
-        })
-        .collect();
-
-    print_table(
-        &[
-            i18n::tr(M::HId),
-            i18n::tr(M::HHost),
-            i18n::tr(M::HDomain),
-            i18n::tr(M::HStatus),
-            i18n::tr(M::HVersion),
-            i18n::tr(M::HSize),
-        ],
-        rows,
-    );
-    Ok(())
+    Ok(sites)
 }
 
-async fn create(client: &Client, hostname: &str, domain: &str) -> Result<()> {
+async fn create(client: &Client, hostname: &str, domain: &str) -> Result<SitesListInner> {
     let d = resolve_domain(client, domain).await?;
-    let site: SitesListInner = client.n_send_ser::<SiteAdd>(SiteAddReq{
-        hostname: hostname.to_string(),
-        domain_id: d.id
-    }, ()).await?;
-    success(&i18n::f(
-        M::SiteCreated,
-        &[("host", &site.hostname), ("id", &site.id.to_string())],
-    ));
-    Ok(())
+    let site: SitesListInner = client
+        .n_send_ser::<SiteAdd>(
+            SiteAddReq {
+                hostname: hostname.to_string(),
+                domain_id: d.id,
+            },
+            (),
+        )
+        .await?;
+
+    Ok(site)
 }
 
-async fn files(ctx: &Context, client: &Client, hostname: &str) -> Result<()> {
+async fn files(client: &Client, hostname: &str) -> Result<FilesResponseSite> {
     let site = resolve_site(client, hostname).await?;
     // let resp: FilesResponse = client
     //     .get_json(&format!("static-sites/{}/files", site.id))
@@ -151,22 +133,12 @@ async fn files(ctx: &Context, client: &Client, hostname: &str) -> Result<()> {
 
     let resp: FilesResponseSite = client.n_send::<SiteFiles>(site.id).await?;
 
-    if ctx.output == OutputFormat::Json {
-        return print_json(&resp.files.iter().map(|f| &f.path).collect::<Vec<_>>());
-    }
-    let rows = resp
-        .files
-        .iter()
-        .filter(|f| !f.is_dir)
-        .map(|f| vec![f.path.clone(), f.etag.clone().unwrap_or_default()])
-        .collect();
-    print_table(&[i18n::tr(M::HPath), i18n::tr(M::HEtag)], rows);
-    Ok(())
+    Ok(resp)
 }
 
 // --- Publishing ---
 
-async fn publish(client: &Client, site_id: i64, dir: &Path, dry_run: bool) -> Result<()> {
+async fn publish(client: &Client, site_id: i64, dir: &Path, dry_run: bool) -> Result<String> {
     let root = std::fs::canonicalize(dir)
         .with_context(|| i18n::f(M::DirNotFound, &[("path", &dir.display().to_string())]))?;
     if !root.is_dir() {
@@ -203,28 +175,29 @@ async fn publish(client: &Client, site_id: i64, dir: &Path, dry_run: bool) -> Re
         .collect();
     to_delete.sort();
 
-    let unchanged = local.len() - to_upload.len();
-    println!(
-        "{}",
-        i18n::f(
-            M::PublishSummary,
-            &[
-                ("id", &site_id.to_string()),
-                ("local", &local.len().to_string()),
-                ("server", &server.len().to_string()),
-                ("up", &to_upload.len().to_string()),
-                ("del", &to_delete.len().to_string()),
-                ("same", &unchanged.to_string()),
-            ],
-        )
-    );
+    // let unchanged = local.len() - to_upload.len();
+    // println!(
+    //     "{}",
+    //     i18n::f(
+    //         M::PublishSummary,
+    //         &[
+    //             ("id", &site_id.to_string()),
+    //             ("local", &local.len().to_string()),
+    //             ("server", &server.len().to_string()),
+    //             ("up", &to_upload.len().to_string()),
+    //             ("del", &to_delete.len().to_string()),
+    //             ("same", &unchanged.to_string()),
+    //         ],
+    //     )
+    // );
+
     if to_upload.is_empty() && to_delete.is_empty() {
-        crate::output::info(i18n::tr(M::PublishNoChanges));
-        return Ok(());
+        // crate::output::info(i18n::tr(M::PublishNoChanges));
+        return Ok(i18n::tr(M::PublishNoChanges).to_string());
     }
     if dry_run {
-        crate::output::info(i18n::tr(M::PublishDryRun));
-        return Ok(());
+        // crate::output::info(i18n::tr(M::PublishDryRun));
+        return Ok(i18n::tr(M::PublishDryRun).to_string());
     }
 
     // 4. Upload changed files in batches, concurrently.
@@ -237,8 +210,8 @@ async fn publish(client: &Client, site_id: i64, dir: &Path, dry_run: bool) -> Re
     }
     // 6. Publish the snapshot.
     client.n_send::<SitePublish>(site_id).await?;
-    success(i18n::tr(M::Published));
-    Ok(())
+    // success(i18n::tr(M::Published));
+    Ok(i18n::tr(M::Published).to_string())
 }
 
 /// Walks the directory and computes the MD5 of every file (symlinks are skipped).
@@ -315,11 +288,7 @@ async fn upload_all(client: &Client, site_id: i64, files: Vec<(String, PathBuf)>
     let total = files.len() as u64;
     let batches = make_batches(files);
     let bar = ProgressBar::new(total);
-    bar.set_style(
-        ProgressStyle::with_template(i18n::tr(M::UploadBar))
-            .unwrap()
-            .progress_chars("=>-"),
-    );
+    bar.set_style(ProgressStyle::with_template(i18n::tr(M::UploadBar))?.progress_chars("=>-"));
 
     let results = stream::iter(batches.into_iter().map(|batch| {
         let client = client.clone();
@@ -357,13 +326,22 @@ async fn upload_batch(client: &Client, site_id: i64, batch: Vec<(String, PathBuf
         let part = Part::bytes(data).file_name(filename).mime_str(&ctype)?;
         form = form.part("files", part);
     }
-    client.n_send_multipart::<SiteFilesUploadBatch>(site_id, form).await?;
+    client
+        .n_send_multipart::<SiteFilesUploadBatch>(site_id, form)
+        .await?;
     Ok(())
 }
 
 async fn delete_all(client: &Client, site_id: i64, paths: &[String]) -> Result<()> {
     for chunk in paths.chunks(DELETE_BATCH) {
-        client.n_send_ser::<SiteFilesDeleteBatch>(SiteFilesPaths{paths: chunk.to_owned()}, site_id).await?;
+        client
+            .n_send_ser::<SiteFilesDeleteBatch>(
+                SiteFilesPaths {
+                    paths: chunk.to_owned(),
+                },
+                site_id,
+            )
+            .await?;
     }
     crate::output::info(&i18n::f(
         M::DeletedFiles,
@@ -376,7 +354,8 @@ fn fmt_size(bytes: i64) -> String {
     let units: [&str; 4] = match i18n::get() {
         Lang::Ru => ["Б", "КБ", "МБ", "ГБ"],
         Lang::En => ["B", "KB", "MB", "GB"],
-    };
+    }; // FIXME Why is this here?
+
     let mut v = bytes as f64;
     let mut i = 0;
     while v >= 1024.0 && i < units.len() - 1 {
@@ -393,6 +372,7 @@ fn fmt_size(bytes: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::{json, Value};
     use wiremock::matchers::{body_json, method, path as url_path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 

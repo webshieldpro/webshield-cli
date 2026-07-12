@@ -13,6 +13,7 @@ use clap::{CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
 use clap_complete_nushell::Nushell;
 
+use crate::api::table::{DisplayTable, ProgramRes};
 use api::Client;
 use config::Config;
 use i18n::Lang;
@@ -170,7 +171,7 @@ async fn run() -> Result<()> {
         yes: cli.yes,
     };
 
-    match cli.command {
+    let result: Result<ProgramRes> = match cli.command {
         Command::Auth(cmd) => commands::auth::run(&ctx, cmd).await,
         Command::Domains(cmd) => commands::domains::run(&ctx, cmd).await,
         Command::Dns(cmd) => commands::dns::run(&ctx, cmd).await,
@@ -203,9 +204,15 @@ async fn run() -> Result<()> {
                     clap_complete::generate(Nushell, &mut cmd, name, &mut out)
                 }
             }
-            Ok(())
+            Ok(ProgramRes::from("ok".to_string()))
         }
+    };
+
+    match result? {
+        ProgramRes::Str(s) => println!("{}", s),
+        ProgramRes::Table(tb) => tb.display_as_table(),
     }
+    Ok(())
 }
 
 #[cfg(test)]

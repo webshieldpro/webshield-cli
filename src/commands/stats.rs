@@ -2,9 +2,8 @@
 
 use crate::api::Client;
 use crate::api::_models::stats::{BanStats, StatBans, StatDomains, SummaryStats};
+use crate::api::table::ProgramRes;
 use crate::commands::domains::resolve_domain;
-use crate::i18n::{self, M};
-use crate::output::print_table;
 use crate::Context;
 use anyhow::Result;
 use clap::Subcommand;
@@ -27,60 +26,33 @@ pub enum StatsCommand {
     },
 }
 
-pub async fn run(ctx: &Context, cmd: StatsCommand) -> Result<()> {
+pub async fn run(ctx: &Context, cmd: StatsCommand) -> Result<ProgramRes> {
     let client = ctx.client()?;
     match cmd {
-        StatsCommand::Summary { domain, range } => summary(&client, &domain, &range).await,
-        StatsCommand::Bans { domain, range } => bans(&client, &domain, &range).await,
+        StatsCommand::Summary { domain, range } => summary(&client, &domain, &range)
+            .await
+            .map(ProgramRes::from),
+        StatsCommand::Bans { domain, range } => {
+            bans(&client, &domain, &range).await.map(ProgramRes::from)
+        }
     }
 }
 
-async fn summary(client: &Client, domain: &str, range: &str) -> Result<()> {
+async fn summary(client: &Client, domain: &str, range: &str) -> Result<SummaryStats> {
     let d = resolve_domain(client, domain).await?;
     // The summary is complex (charts and aggregates) — print it as JSON.
-    let payload: SummaryStats = client.n_send::<StatDomains>((d.id, range.to_string())).await?;
-
-    println!("{:?}", payload);
-    Ok(())
+    let payload: SummaryStats = client
+        .n_send::<StatDomains>((d.id, range.to_string()))
+        .await?;
+    Ok(payload)
 }
 
-async fn bans(client: &Client, domain: &str, range: &str) -> Result<()> {
+async fn bans(client: &Client, domain: &str, range: &str) -> Result<BanStats> {
     let d = resolve_domain(client, domain).await?;
 
     let payload: BanStats = client.n_send::<StatBans>((d.id, range.to_string())).await?;
 
-    if payload.bans.is_empty() {
-        crate::output::info(i18n::tr(M::NoBans));
-        return Ok(());
-    }
-
-    // TODO impl Display
-    let rows = payload
-        .bans
-        .iter()
-        .map(|b| {
-            let s = |k: &str| b.get(k).map(fmt_value).unwrap_or_default();
-            vec![
-                s("ip"),
-                s("type"),
-                s("reason"),
-                s("last_seen"),
-                s("requests"),
-            ]
-        })
-        .collect();
-
-    print_table(
-        &[
-            i18n::tr(M::HIp),
-            i18n::tr(M::HType),
-            i18n::tr(M::HReason),
-            i18n::tr(M::HLastSeen),
-            i18n::tr(M::HRequests),
-        ],
-        rows,
-    );
-    Ok(())
+    Ok(payload)
 }
 
 fn fmt_value(v: &Value) -> String {
