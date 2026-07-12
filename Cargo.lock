@@ -2016,7 +2016,6 @@ dependencies = [
  "futures",
  "hex",
  "indicatif",
- "log",
  "md-5",
  "mime_guess",
  "predicates",

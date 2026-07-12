@@ -37,7 +37,6 @@ comfy-table = "7"
 console = "0.15"
 rpassword = "7"
 futures = "0.3"
-log = "0.4.33"
 
 [dev-dependencies]
 # HTTP mock server for API-level tests (works with tokio + reqwest).
