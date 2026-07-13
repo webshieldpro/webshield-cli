@@ -4,7 +4,7 @@
 //! scopes). JWT email login is not implemented yet (needed for token/S3 management).
 
 use crate::api::_models::domain::Domains;
-use crate::api::client::HttpError;
+use crate::api::error::HttpError;
 use crate::api::table::ProgramRes;
 use crate::config::{Config, Profile, DEFAULT_API_URL};
 use crate::i18n::{self, M};

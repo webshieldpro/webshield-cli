@@ -2,6 +2,7 @@
 
 pub mod _models;
 pub mod client;
+pub mod error;
 pub mod models;
 mod request_desc;
 pub mod table;
