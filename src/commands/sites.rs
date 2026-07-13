@@ -10,7 +10,8 @@ use std::path::{Path, PathBuf};
 
 use crate::api::_models::sites::{
     FilesResponseSite, SiteAdd, SiteAddReq, SiteDisable, SiteFiles, SiteFilesDeleteBatch,
-    SiteFilesPaths, SiteFilesUploadBatch, SitePublish, Sites, SitesList, SitesListInner,
+    SiteFilesPaths, SiteFilesUploadBatch, SiteGet, SitePublish, SitePublishBucketReq,
+    SitePublishFromBucket, Sites, SitesList, SitesListInner,
 };
 use crate::api::table::ProgramRes;
 use crate::api::Client;
@@ -58,6 +59,17 @@ pub enum SitesCommand {
         #[arg(long)]
         dry_run: bool,
     },
+    /// Publish the site from one of your own object-storage buckets.
+    PublishFromBucket {
+        /// Site hostname.
+        hostname: String,
+        /// Source bucket name (short `<name>` or full `u<id>-<name>`).
+        #[arg(long)]
+        bucket: String,
+        /// Source prefix (directory) inside the bucket. Empty = bucket root.
+        #[arg(long, default_value = "")]
+        path: String,
+    },
     /// List files of the current draft.
     Files { hostname: String },
     /// Unpublish the site.
@@ -78,6 +90,16 @@ pub async fn run(ctx: &Context, cmd: SitesCommand) -> Result<ProgramRes> {
         } => {
             let site = resolve_site(&client, &hostname).await?;
             publish(&client, site.id, &dir, dry_run)
+                .await
+                .map(ProgramRes::from)
+        }
+        SitesCommand::PublishFromBucket {
+            hostname,
+            bucket,
+            path,
+        } => {
+            let site = resolve_site(&client, &hostname).await?;
+            publish_from_bucket(&client, site.id, &bucket, &path)
                 .await
                 .map(ProgramRes::from)
         }
@@ -128,6 +150,60 @@ async fn files(client: &Client, hostname: &str) -> Result<FilesResponseSite> {
     let resp: FilesResponseSite = client.n_send::<SiteFiles>(site.id).await?;
 
     Ok(resp)
+}
+
+// --- Publish from an object-storage bucket (variant B) ---
+
+// Poll interval and ceiling while the server ingests+publishes asynchronously.
+const BUCKET_POLL_INTERVAL_SECS: u64 = 2;
+const BUCKET_POLL_MAX_ATTEMPTS: usize = 300; // ~10 minutes.
+
+async fn publish_from_bucket(
+    client: &Client,
+    site_id: i64,
+    bucket: &str,
+    path: &str,
+) -> Result<()> {
+    // Kick off the async publish (202 → status "publishing").
+    client
+        .n_send_ser::<SitePublishFromBucket>(
+            SitePublishBucketReq {
+                bucket: bucket.to_string(),
+                path: path.to_string(),
+            },
+            site_id,
+        )
+        .await?;
+
+    let spinner = ProgressBar::new_spinner();
+    spinner.set_style(ProgressStyle::default_spinner());
+    spinner.set_message(i18n::tr(M::BucketPublishStarted).to_string());
+    spinner.enable_steady_tick(std::time::Duration::from_millis(120));
+
+    // Poll until the site leaves the transient "publishing" status.
+    for _ in 0..BUCKET_POLL_MAX_ATTEMPTS {
+        tokio::time::sleep(std::time::Duration::from_secs(BUCKET_POLL_INTERVAL_SECS)).await;
+        let site: SitesListInner = client.n_send::<SiteGet>(site_id).await?;
+        match site.status.as_deref() {
+            Some("publishing") => continue,
+            Some("active") => {
+                spinner.finish_and_clear();
+                let version = site
+                    .content_version
+                    .map(|v| v.to_string())
+                    .unwrap_or_default();
+                success(i18n::f(M::BucketPublished, &[("version", &version)]));
+                return Ok(());
+            }
+            _ => {
+                spinner.finish_and_clear();
+                let err = site.publish_error.unwrap_or_default();
+                bail!(i18n::f(M::BucketPublishFailed, &[("error", &err)]));
+            }
+        }
+    }
+    spinner.finish_and_clear();
+    bail!(i18n::tr(M::BucketPublishTimeout))
 }
 
 // --- Publishing ---
@@ -498,5 +574,59 @@ mod tests {
         let server = MockServer::start().await;
         let missing = std::env::temp_dir().join("webshield-cli-no-such-dir-xyz");
         assert!(publish(&client(&server), 5, &missing, true).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn publish_from_bucket_posts_body_and_polls_until_active() {
+        let server = MockServer::start().await;
+        // The action posts {bucket, path} and returns 202 with status "publishing".
+        Mock::given(method("POST"))
+            .and(url_path("/api/v1/static-sites/5/publish-from-bucket"))
+            .and(body_json(json!({"bucket": "web", "path": "public/"})))
+            .respond_with(
+                ResponseTemplate::new(202)
+                    .set_body_json(json!({"id": 5, "hostname": "s", "status": "publishing"})),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+        // Polling the site returns "active" → success.
+        Mock::given(method("GET"))
+            .and(url_path("/api/v1/static-sites/5"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                json!({"id": 5, "hostname": "s", "status": "active", "content_version": 7}),
+            ))
+            .mount(&server)
+            .await;
+
+        publish_from_bucket(&client(&server), 5, "web", "public/")
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn publish_from_bucket_surfaces_publish_error() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(url_path("/api/v1/static-sites/5/publish-from-bucket"))
+            .respond_with(
+                ResponseTemplate::new(202)
+                    .set_body_json(json!({"id": 5, "hostname": "s", "status": "publishing"})),
+            )
+            .mount(&server)
+            .await;
+        // Async publish failed: status reverted, publish_error carries the reason.
+        Mock::given(method("GET"))
+            .and(url_path("/api/v1/static-sites/5"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(
+                json!({"id": 5, "hostname": "s", "status": "disabled", "publish_error": "boom"}),
+            ))
+            .mount(&server)
+            .await;
+
+        let err = publish_from_bucket(&client(&server), 5, "web", "")
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("boom"));
     }
 }

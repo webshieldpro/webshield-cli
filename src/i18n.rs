@@ -161,6 +161,10 @@ pub enum M {
     PublishNoChanges,
     PublishDryRun,
     Published,
+    BucketPublishStarted,
+    BucketPublished,
+    BucketPublishFailed,
+    BucketPublishTimeout,
     DeletedFiles,
     UploadBar,
     NotFoundSite,
@@ -367,6 +371,22 @@ impl M {
                 "dry-run: изменения не применяются.",
             ),
             Published => ("published.", "опубликовано."),
+            BucketPublishStarted => (
+                "publishing from bucket…",
+                "публикация из бакета…",
+            ),
+            BucketPublished => (
+                "published from bucket (version {version}).",
+                "опубликовано из бакета (версия {version}).",
+            ),
+            BucketPublishFailed => (
+                "bucket publish failed: {error}",
+                "публикация из бакета не удалась: {error}",
+            ),
+            BucketPublishTimeout => (
+                "bucket publish is still running; check the site status later.",
+                "публикация из бакета ещё идёт; проверьте статус сайта позже.",
+            ),
             DeletedFiles => ("files deleted: {count}", "удалено файлов: {count}"),
             UploadBar => (
                 "  upload [{bar:30}] {pos}/{len} files",

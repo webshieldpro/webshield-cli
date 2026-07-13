@@ -27,6 +27,8 @@ pub struct SitesListInner {
     pub content_version: Option<i64>,
     #[serde(default)]
     pub size_bytes: Option<i64>,
+    #[serde(default)]
+    pub publish_error: Option<String>,
 }
 
 impl DisplayTable for SitesListInner {
@@ -177,6 +179,43 @@ impl RequestDesc for SitePublish {
 
     fn get_url(id: Self::Params) -> impl AsRef<str> {
         format!("static-sites/{}/publish", id)
+    }
+
+    fn method() -> Method {
+        Method::POST
+    }
+}
+
+pub struct SiteGet;
+
+impl RequestDesc for SiteGet {
+    type Params = i64;
+    type Request = ();
+    type Response = SitesListInner;
+
+    fn get_url(id: Self::Params) -> impl AsRef<str> {
+        format!("static-sites/{}", id)
+    }
+
+    fn method() -> Method {
+        Method::GET
+    }
+}
+
+pub struct SitePublishFromBucket;
+#[derive(Debug, Serialize)]
+pub struct SitePublishBucketReq {
+    pub bucket: String,
+    pub path: String,
+}
+
+impl RequestDesc for SitePublishFromBucket {
+    type Params = i64;
+    type Request = SitePublishBucketReq;
+    type Response = SitesListInner;
+
+    fn get_url(id: Self::Params) -> impl AsRef<str> {
+        format!("static-sites/{}/publish-from-bucket", id)
     }
 
     fn method() -> Method {
