@@ -95,7 +95,6 @@ impl DisplayTable for RRSetList {
     }
 }
 
-
 #[derive(Deserialize, Serialize)]
 pub struct DnssecResp {
     enabled: bool,
@@ -117,8 +116,6 @@ impl DisplayTable for DnssecResp {
 }
 
 pub struct DnssecGet;
-
-
 
 impl RequestDesc for DnssecGet {
     type Params = i64;

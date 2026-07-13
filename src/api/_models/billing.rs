@@ -61,7 +61,7 @@ pub struct BillingDomainUsage {
 }
 
 fn _option_to_string<S: ToString>(s: Option<S>) -> String {
-    s.map(|s| s.to_string()).unwrap_or_else(|| "".to_string())
+    s.map(|s| s.to_string()).unwrap_or_default()
 }
 
 fn _bool_to_string(b: bool) -> String {
@@ -116,37 +116,6 @@ pub struct Tariff {
     is_active: bool,
     created_at: String,
 }
-
-// TODO
-// let current = payload
-// .get("current_tariff")
-// .and_then(|t| t.get("name"))
-// .and_then(Value::as_str)
-// .unwrap_or("");
-// let list = payload
-// .get("tariffs")
-// .and_then(Value::as_array)
-// .cloned()
-// .unwrap_or_default();
-// let rows = list
-// .iter()
-// .map(|t| {
-// let s = |k: &str| t.get(k).map(fmt_value).unwrap_or_default();
-// let name = s("name");
-// let marker = if name == current { "*" } else { "" };
-// vec![marker.into(), name, s("price"), s("currency"), s("period")]
-// })
-// .collect();
-// print_table(
-// &[
-// "",
-// i18n::tr(M::HName),
-// "price",
-// i18n::tr(M::HCurrency),
-// "period",
-// ],
-// rows,
-// );
 
 #[derive(Deserialize, Serialize)]
 pub struct BillingTariffsGet {

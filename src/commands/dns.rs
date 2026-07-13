@@ -9,11 +9,11 @@
 //! Commands: `add` — default POST (the server merges), `remove` — DELETE of specific
 //! values (or the whole rrset), `set` — client-side reconcile (DELETE extras + POST targets).
 
-use crate::api::Client;
 use crate::api::_models::dns::{
     DNSDomainRecords, DnssecDelete, DnssecGet, DnssecPost, DnssecResp, RRSet, RRSetList,
 };
 use crate::api::table::ProgramRes;
+use crate::api::Client;
 use crate::commands::domains::resolve_domain;
 use crate::i18n::{self, M};
 use crate::Context;
@@ -128,7 +128,6 @@ enum Op {
 
 async fn post_rrset(client: &Client, domain_id: i64, rrset: Value) -> Result<()> {
     let body = json!({ "rrsets": [rrset] });
-    // TODO
     let _: Value = client
         .post_json(&format!("domains/{domain_id}/records"), &body)
         .await?;
@@ -214,20 +213,7 @@ async fn list(client: &Client, domain: &str, rr_type: Option<String>) -> Result<
         .collect::<Vec<RRSet>>()
         .into();
 
-    // if ctx.output == OutputFormat::Json {
-    //     return print_json(&rrsets);
-    // }
     Ok(rrsets)
-    // if let Some(used) = resp.records_used {
-    //     let limit = resp
-    //         .records_limit
-    //         .map(|l| l.to_string())
-    //         .unwrap_or_else(|| "∞".into());
-    //     crate::output::info(&i18n::f(
-    //         M::RecordsCount,
-    //         &[("used", &used.to_string()), ("limit", &limit)],
-    //     ));
-    // }
 }
 
 /// Single entry point for add/set/remove — they differ only in the rrsets they build.
@@ -314,24 +300,14 @@ async fn dnssec(client: &Client, cmd: DnssecCommand) -> Result<DnssecResp> {
 
             let r = client.n_send::<DnssecGet>(d.id).await?;
             Ok(r)
-            // let result: Value = client.get_json(&format!("domains/{}/dnssec", d.id)).await?;
-            // print_json(&result)
         }
         DnssecCommand::Enable { domain } => {
             let d = resolve_domain(client, &domain).await?;
             let r = client.n_send::<DnssecPost>(d.id).await?;
             Ok(r)
-            // success(i18n::tr(M::DnssecEnabled));
-            // print_json(&result)
         }
         DnssecCommand::Disable { domain, force } => {
             let d = resolve_domain(client, &domain).await?;
-            // let path = if force {
-            //     format!("domains/{}/dnssec?force=true", d.id)
-            // } else {
-            //     format!("domains/{}/dnssec", d.id)
-            // };
-            // let result = client.delete(&path).await?;
             let has_force = if force {
                 Some("?force=true".to_string())
             } else {
@@ -340,8 +316,6 @@ async fn dnssec(client: &Client, cmd: DnssecCommand) -> Result<DnssecResp> {
 
             let r = client.n_send::<DnssecDelete>((d.id, has_force)).await?;
             Ok(r)
-            // success(i18n::tr(M::DnssecDisabled));
-            // print_json(&result)
         }
     }
 }

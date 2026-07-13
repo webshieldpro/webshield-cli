@@ -95,7 +95,6 @@ pub enum M {
     No,
     Dash,
     Empty,
-    HField,
     HValue,
     ErrorPrefix,
     ConfirmSuffix,
@@ -144,14 +143,11 @@ pub enum M {
     HTtl,
     HProxy,
     HValues,
-    RecordsCount,
     DnsAdded,
     DnsSet,
     DnsRemoved,
     RecordNotFound,
     NothingToDelete,
-    DnssecEnabled,
-    DnssecDisabled,
     // sites
     HHost,
     HStatus,
@@ -180,7 +176,6 @@ pub enum M {
     ProxyRemoved,
     ConfirmRemoveProxy,
     NotFoundProxy,
-    NeedDomain,
     // stats / billing
     HCurrency,
     HBalance,
@@ -216,7 +211,6 @@ impl M {
             No => ("no", "нет"),
             Dash => ("—", "—"),
             Empty => ("— empty —", "— пусто —"),
-            HField => ("Field", "Поле"),
             HValue => ("Value", "Значение"),
             ErrorPrefix => ("error:", "ошибка:"),
             ConfirmSuffix => ("[y/N]", "[y/N]"),
@@ -328,7 +322,6 @@ impl M {
             HTtl => ("TTL", "TTL"),
             HProxy => ("Proxy", "Прокси"),
             HValues => ("Values", "Значения"),
-            RecordsCount => ("records: {used} / {limit}", "записей: {used} / {limit}"),
             DnsAdded => (
                 "{name} {type} {domain}: values added — {count}.",
                 "{name} {type} {domain}: добавлено значений — {count}.",
@@ -346,11 +339,6 @@ impl M {
                 "nothing to delete: record {name} {type} has no values",
                 "нечего удалять: у записи {name} {type} нет значений",
             ),
-            DnssecEnabled => (
-                "DNSSEC enabled. Publish the DS records at your registrar:",
-                "DNSSEC включён. Опубликуйте DS-записи у регистратора:",
-            ),
-            DnssecDisabled => ("DNSSEC disabled.", "DNSSEC выключен."),
 
             HHost => ("Host", "Хост"),
             HStatus => ("Status", "Статус"),
@@ -411,10 +399,6 @@ impl M {
             NotFoundProxy => (
                 "proxy config for `{host}` not found",
                 "конфиг прокси для `{host}` не найден",
-            ),
-            NeedDomain => (
-                "--domain is required to create a new host config",
-                "для создания нового конфига хоста нужен --domain",
             ),
 
             HCurrency => ("Currency", "Валюта"),

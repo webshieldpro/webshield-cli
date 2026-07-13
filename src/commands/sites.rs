@@ -8,14 +8,14 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::api::Client;
 use crate::api::_models::sites::{
     FilesResponseSite, SiteAdd, SiteAddReq, SiteDisable, SiteFiles, SiteFilesDeleteBatch,
     SiteFilesPaths, SiteFilesUploadBatch, SitePublish, Sites, SitesList, SitesListInner,
 };
 use crate::api::table::ProgramRes;
+use crate::api::Client;
 use crate::commands::domains::resolve_domain;
-use crate::i18n::{self, Lang, M};
+use crate::i18n::{self, M};
 use crate::output::success;
 use crate::Context;
 use anyhow::{bail, Context as _, Result};
@@ -85,27 +85,26 @@ pub async fn run(ctx: &Context, cmd: SitesCommand) -> Result<ProgramRes> {
         SitesCommand::Disable { hostname } => {
             let site = resolve_site(&client, &hostname).await?;
             client.n_send::<SiteDisable>(site.id).await?;
-            success(&i18n::f(M::SiteDisabled, &[("host", &site.hostname)]));
+            success(i18n::f(M::SiteDisabled, &[("host", &site.hostname)]));
             Ok(ProgramRes::Idle)
         }
     }
 }
 
 async fn resolve_site(client: &Client, hostname: &str) -> Result<SitesListInner> {
-    let sites: SitesList = client.n_send::<Sites>(()).await?;
+    let sites = client.n_list::<Sites>(()).await?;
 
     let needle = hostname.trim().to_lowercase();
 
     sites
-        .results
         .into_iter()
         .find(|s| s.hostname.eq_ignore_ascii_case(&needle))
         .ok_or_else(|| anyhow::anyhow!(i18n::f(M::NotFoundSite, &[("host", hostname)])))
 }
 
 async fn list(client: &Client) -> Result<SitesList> {
-    let sites: SitesList = client.n_send::<Sites>(()).await?;
-    Ok(sites)
+    let results = client.n_list::<Sites>(()).await?;
+    Ok(SitesList { results })
 }
 
 async fn create(client: &Client, hostname: &str, domain: &str) -> Result<SitesListInner> {
@@ -338,30 +337,11 @@ async fn delete_all(client: &Client, site_id: i64, paths: &[String]) -> Result<(
             )
             .await?;
     }
-    crate::output::info(&i18n::f(
+    crate::output::info(i18n::f(
         M::DeletedFiles,
         &[("count", &paths.len().to_string())],
     ));
     Ok(())
-}
-
-fn fmt_size(bytes: i64) -> String {
-    let units: [&str; 4] = match i18n::get() {
-        Lang::Ru => ["Б", "КБ", "МБ", "ГБ"],
-        Lang::En => ["B", "KB", "MB", "GB"],
-    }; // FIXME Why is this here?
-
-    let mut v = bytes as f64;
-    let mut i = 0;
-    while v >= 1024.0 && i < units.len() - 1 {
-        v /= 1024.0;
-        i += 1;
-    }
-    if i == 0 {
-        format!("{bytes} {}", units[0])
-    } else {
-        format!("{v:.1} {}", units[i])
-    }
 }
 
 #[cfg(test)]
@@ -422,14 +402,6 @@ mod tests {
     #[test]
     fn make_batches_of_nothing_is_empty() {
         assert!(make_batches(Vec::new()).is_empty());
-    }
-
-    #[test]
-    fn fmt_size_uses_binary_units() {
-        assert_eq!(fmt_size(0), "0 B");
-        assert_eq!(fmt_size(1023), "1023 B");
-        assert_eq!(fmt_size(1536), "1.5 KB");
-        assert_eq!(fmt_size(5 * 1024 * 1024), "5.0 MB");
     }
 
     fn client(server: &MockServer) -> Client {

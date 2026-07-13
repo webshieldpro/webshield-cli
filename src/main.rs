@@ -13,7 +13,7 @@ use clap::{CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
 use clap_complete_nushell::Nushell;
 
-use crate::api::table::{DisplayTable, ProgramRes};
+use crate::api::table::ProgramRes;
 use api::Client;
 use config::Config;
 use i18n::Lang;

@@ -4,6 +4,7 @@
 //! scopes). JWT email login is not implemented yet (needed for token/S3 management).
 
 use crate::api::_models::domain::Domains;
+use crate::api::client::HttpError;
 use crate::api::table::ProgramRes;
 use crate::config::{Config, Profile, DEFAULT_API_URL};
 use crate::i18n::{self, M};
@@ -111,12 +112,15 @@ async fn status(ctx: &Context) -> Result<()> {
         info(i18n::tr(M::LoginHint));
     } else {
         let client = ctx.client()?;
-        let resp = client.n_send::<Domains>(()).await;
+        let resp = client.n_list::<Domains>(()).await;
 
         let verdict = match resp {
             Ok(_) => style(i18n::tr(M::AccessOk).to_string()).green(),
-            Err(err) => match err.status().map(|code| code.as_u16()) {
-                Some(200) => style(i18n::tr(M::AccessOk).to_string()).green(),
+            // The HTTP code is recovered from the typed error in the anyhow chain.
+            Err(err) => match err
+                .downcast_ref::<HttpError>()
+                .map(|http| http.status.as_u16())
+            {
                 Some(401) => style(i18n::tr(M::AccessInvalid).to_string()).red(),
                 Some(403) => style(i18n::tr(M::AccessForbidden).to_string()).yellow(),
 
@@ -140,9 +144,9 @@ fn logout(ctx: &Context) -> Result<()> {
     if let Some(profile) = cfg.profiles.get_mut(&name) {
         profile.token = None;
         cfg.save()?;
-        success(&i18n::f(M::TokenRemoved, &[("profile", &name)]));
+        success(i18n::f(M::TokenRemoved, &[("profile", &name)]));
     } else {
-        info(&i18n::f(M::ProfileNotFound, &[("profile", &name)]));
+        info(i18n::f(M::ProfileNotFound, &[("profile", &name)]));
     }
     Ok(())
 }

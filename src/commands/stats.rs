@@ -1,13 +1,12 @@
 //! Domain statistics and protection (scope `stats`, read-only).
 
-use crate::api::Client;
 use crate::api::_models::stats::{BanStats, StatBans, StatDomains, SummaryStats};
 use crate::api::table::ProgramRes;
+use crate::api::Client;
 use crate::commands::domains::resolve_domain;
 use crate::Context;
 use anyhow::Result;
 use clap::Subcommand;
-use serde_json::Value;
 
 #[derive(Subcommand)]
 pub enum StatsCommand {
@@ -53,12 +52,4 @@ async fn bans(client: &Client, domain: &str, range: &str) -> Result<BanStats> {
     let payload: BanStats = client.n_send::<StatBans>((d.id, range.to_string())).await?;
 
     Ok(payload)
-}
-
-fn fmt_value(v: &Value) -> String {
-    match v {
-        Value::String(s) => s.clone(),
-        Value::Null => String::new(),
-        other => other.to_string(),
-    }
 }

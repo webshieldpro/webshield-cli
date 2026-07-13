@@ -1,4 +1,4 @@
-use crate::api::request_desc::RequestDesc;
+use crate::api::request_desc::{ListRequestDesc, RequestDesc};
 use crate::api::table::DisplayTable;
 use crate::i18n;
 use crate::i18n::M;
@@ -26,14 +26,18 @@ pub struct DomainInner {
     pub current_tariff: Option<Tariff>,
 }
 
+fn domain_headers() -> Vec<&'static str> {
+    vec![
+        i18n::tr(M::HId),
+        i18n::tr(M::HDomain),
+        i18n::tr(M::HDelegated),
+        i18n::tr(M::HTariff),
+    ]
+}
+
 impl DisplayTable for DomainInner {
     fn headers(&self) -> Vec<&'static str> {
-        vec![
-            i18n::tr(M::HId).into(),
-            i18n::tr(M::HDomain).into(),
-            i18n::tr(M::HDelegated).into(),
-            i18n::tr(M::HTariff).into(),
-        ]
+        domain_headers()
     }
 
     fn rows(&self) -> Vec<Vec<String>> {
@@ -72,14 +76,14 @@ impl RequestDesc for DomainAdd {
 }
 
 pub struct Domains;
-#[derive(Deserialize, Serialize)]
+#[derive(Serialize)]
 pub struct DomainList {
     pub results: Vec<DomainInner>,
 }
 
 impl DisplayTable for DomainList {
     fn headers(&self) -> Vec<&'static str> {
-        self.results.iter().next().unwrap().headers()
+        domain_headers()
     }
 
     fn rows(&self) -> Vec<Vec<String>> {
@@ -91,27 +95,22 @@ impl DisplayTable for DomainList {
     }
 }
 
-impl RequestDesc for Domains {
+impl ListRequestDesc for Domains {
     type Params = ();
-    type Request = ();
-    type Response = DomainList;
+    type Item = DomainInner;
 
     fn get_url(_: ()) -> impl AsRef<str> {
         "domains"
-    }
-
-    fn method() -> Method {
-        Method::GET
     }
 }
 
 pub struct DomainDelete;
 
 impl RequestDesc for DomainDelete {
-    // TODO: request the DomainInner structure
     type Params = i64;
     type Request = ();
-    type Response = ();
+    // The body (204 or a JSON payload) is irrelevant — only the status matters.
+    type Response = serde::de::IgnoredAny;
 
     fn get_url(id: Self::Params) -> impl AsRef<str> {
         format!("domains/{}", id)

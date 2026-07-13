@@ -1,11 +1,10 @@
 //! Output formatting: human-readable tables and JSON for scripts.
 
-use std::fmt::Display;
-use anyhow::Result;
+use crate::i18n::{self, Lang};
 use clap::ValueEnum;
 use comfy_table::{presets::UTF8_FULL, Cell, ContentArrangement, Table};
 use console::style;
-use serde::Serialize;
+use std::fmt::Display;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum OutputFormat {
@@ -15,10 +14,24 @@ pub enum OutputFormat {
     Json,
 }
 
-/// Prints a value as JSON (used with `-o json`).
-pub fn print_json<T: Serialize>(value: &T) -> Result<()> {
-    println!("{}", serde_json::to_string_pretty(value)?);
-    Ok(())
+/// Formats a byte count with binary units (1023 B, 1.5 KB, …).
+pub fn fmt_size(bytes: i64) -> String {
+    let units: [&str; 4] = match i18n::get() {
+        Lang::Ru => ["Б", "КБ", "МБ", "ГБ"],
+        Lang::En => ["B", "KB", "MB", "GB"],
+    };
+
+    let mut v = bytes as f64;
+    let mut i = 0;
+    while v >= 1024.0 && i < units.len() - 1 {
+        v /= 1024.0;
+        i += 1;
+    }
+    if i == 0 {
+        format!("{bytes} {}", units[0])
+    } else {
+        format!("{v:.1} {}", units[i])
+    }
 }
 
 /// Builds and prints a table with headers and rows.
@@ -48,4 +61,17 @@ pub fn info<T: Display>(msg: T) {
 
 pub fn warn<T: Display>(msg: T) {
     eprintln!("{} {}", style("!").yellow().bold(), msg);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fmt_size_uses_binary_units() {
+        assert_eq!(fmt_size(0), "0 B");
+        assert_eq!(fmt_size(1023), "1023 B");
+        assert_eq!(fmt_size(1536), "1.5 KB");
+        assert_eq!(fmt_size(5 * 1024 * 1024), "5.0 MB");
+    }
 }

@@ -1,6 +1,6 @@
 #![allow(refining_impl_trait_reachable)]
 
-use crate::api::request_desc::RequestDesc;
+use crate::api::request_desc::{ListRequestDesc, RequestDesc};
 use crate::api::table::DisplayTable;
 use crate::i18n;
 use crate::i18n::M;
@@ -39,7 +39,7 @@ impl DisplayTable for SitesListInner {
     }
 
     fn display_as_table(&self) {
-        success(&i18n::f(
+        success(i18n::f(
             M::SiteCreated,
             &[("host", &self.hostname), ("id", &self.id.to_string())],
         ));
@@ -67,17 +67,12 @@ pub struct SitesList {
     pub results: Vec<SitesListInner>,
 }
 
-impl RequestDesc for Sites {
+impl ListRequestDesc for Sites {
     type Params = ();
-    type Request = ();
-    type Response = SitesList;
+    type Item = SitesListInner;
 
     fn get_url(_: ()) -> &'static str {
         "static-sites"
-    }
-
-    fn method() -> Method {
-        Method::GET
     }
 }
 
@@ -103,7 +98,9 @@ impl DisplayTable for SitesList {
                     s.domain_name.clone().unwrap_or_default(),
                     s.status.clone().unwrap_or_default(),
                     s.content_version.map(|v| v.to_string()).unwrap_or_default(),
-                    s.size_bytes.map(|b| format!("{}B", b)).unwrap_or_default(),
+                    s.size_bytes
+                        .map(crate::output::fmt_size)
+                        .unwrap_or_default(),
                 ]
             })
             .collect()
@@ -159,7 +156,8 @@ pub struct SiteDisable;
 impl RequestDesc for SiteDisable {
     type Params = i64;
     type Request = ();
-    type Response = ();
+    // The response body is irrelevant — only the status matters.
+    type Response = serde::de::IgnoredAny;
 
     fn get_url(id: Self::Params) -> impl AsRef<str> {
         format!("static-sites/{}/disable", id)
@@ -175,7 +173,7 @@ pub struct SitePublish;
 impl RequestDesc for SitePublish {
     type Params = i64;
     type Request = ();
-    type Response = ();
+    type Response = serde::de::IgnoredAny;
 
     fn get_url(id: Self::Params) -> impl AsRef<str> {
         format!("static-sites/{}/publish", id)
@@ -190,7 +188,7 @@ pub struct SiteFilesUploadBatch;
 impl RequestDesc for SiteFilesUploadBatch {
     type Params = i64;
     type Request = Form;
-    type Response = ();
+    type Response = serde::de::IgnoredAny;
 
     fn get_url(site_id: Self::Params) -> impl AsRef<str> {
         format!("static-sites/{site_id}/upload")
@@ -210,7 +208,7 @@ pub struct SiteFilesPaths {
 impl RequestDesc for SiteFilesDeleteBatch {
     type Params = i64;
     type Request = SiteFilesPaths;
-    type Response = serde_json::Value;
+    type Response = serde::de::IgnoredAny;
 
     fn get_url(site_id: Self::Params) -> impl AsRef<str> {
         format!("static-sites/{site_id}/delete-files")

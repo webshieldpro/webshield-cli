@@ -1,4 +1,4 @@
-use crate::api::request_desc::RequestDesc;
+use crate::api::request_desc::{ListRequestDesc, RequestDesc};
 use crate::api::table::DisplayTable;
 use crate::i18n;
 use crate::i18n::M;
@@ -48,6 +48,8 @@ pub struct ProxyDecl {
 
 #[derive(Deserialize, Serialize, Clone)]
 pub struct ProxyData {
+    /// Config id — the `/nginx-configs/{id}` PATCH/DELETE key (NOT domain_id).
+    pub id: i64,
     pub hostname: String,
     pub domain_name: String,
     #[serde(flatten)]
@@ -101,7 +103,8 @@ pub struct ProxyDelete;
 impl RequestDesc for ProxyDelete {
     type Params = i64;
     type Request = ();
-    type Response = ();
+    // The body (204 or a JSON payload) is irrelevant — only the status matters.
+    type Response = serde::de::IgnoredAny;
 
     fn get_url(id: Self::Params) -> impl AsRef<str> {
         format!("nginx-configs/{}", id)
@@ -112,12 +115,12 @@ impl RequestDesc for ProxyDelete {
     }
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Serialize)]
 pub struct Proxies(Vec<ProxyData>);
 
-impl Proxies {
-    pub fn into_inner(self) -> Vec<ProxyData> {
-        self.0
+impl From<Vec<ProxyData>> for Proxies {
+    fn from(configs: Vec<ProxyData>) -> Self {
+        Self(configs)
     }
 }
 
@@ -161,16 +164,11 @@ impl DisplayTable for Proxies {
 
 pub struct ProxyResolve;
 
-impl RequestDesc for ProxyResolve {
+impl ListRequestDesc for ProxyResolve {
     type Params = ();
-    type Request = ();
-    type Response = Proxies;
+    type Item = ProxyData;
 
     fn get_url(_: ()) -> impl AsRef<str> {
         "nginx-configs"
-    }
-
-    fn method() -> Method {
-        Method::GET
     }
 }
