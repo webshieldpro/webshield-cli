@@ -1,7 +1,7 @@
 //! HTTP client for the `/api/v1` API. Authentication — Bearer with a personal `wsk_…` token.
 //! DRF errors (`{"detail": …}` or a field error map) are unwrapped into readable text.
 
-use super::models::Page;
+use super::_models::Page;
 use crate::api::error::check_status;
 use crate::api::request_desc::{ListRequestDesc, RequestDesc};
 use crate::i18n::{self, M};
@@ -94,6 +94,7 @@ impl Client {
                 .request(Method::GET, &next_url)
                 .bearer_auth(&self.token);
             let value = self.send_value(rb).await?;
+            println!("{:?}", value);
             match value {
                 Value::Array(_) => {
                     let items: Vec<R::Item> =

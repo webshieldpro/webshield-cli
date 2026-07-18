@@ -9,7 +9,7 @@
 //! Commands: `add` — default POST (the server merges), `remove` — DELETE of specific
 //! values (or the whole rrset), `set` — client-side reconcile (DELETE extras + POST targets).
 
-use crate::api::_models::dns::{
+use crate::api::models::dns::{
     DNSDomainRecords, DnssecDelete, DnssecGet, DnssecPost, DnssecResp, RRSet, RRSetList,
 };
 use crate::api::table::ProgramRes;

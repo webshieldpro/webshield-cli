@@ -4,6 +4,7 @@ use crate::i18n;
 use crate::i18n::M;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
+use crate::api::_models::DelegationCheck;
 
 #[derive(Deserialize, Serialize)]
 pub struct Tariff {
@@ -100,7 +101,7 @@ impl ListRequestDesc for Domains {
     type Item = DomainInner;
 
     fn get_url(_: ()) -> impl AsRef<str> {
-        "domains"
+        "domains" // ?page=1
     }
 }
 
@@ -125,7 +126,7 @@ pub struct DomainCheckDelegation;
 impl RequestDesc for DomainCheckDelegation {
     type Params = i64;
     type Request = ();
-    type Response = serde_json::Value;
+    type Response = DelegationCheck;
 
     fn get_url(id: Self::Params) -> impl AsRef<str> {
         format!("domains/{}/check-delegation", id)

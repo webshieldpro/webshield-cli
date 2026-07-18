@@ -3,12 +3,12 @@
 //! Primary mode — a personal token `wsk_…` (created in the dashboard, least-privilege
 //! scopes). JWT email login is not implemented yet (needed for token/S3 management).
 
-use crate::api::_models::domain::Domains;
+use crate::api::models::domain::Domains;
 use crate::api::error::HttpError;
 use crate::api::table::ProgramRes;
 use crate::config::{Config, Profile, DEFAULT_API_URL};
 use crate::i18n::{self, M};
-use crate::output::{info, success};
+use crate::util::output::{info, success};
 use crate::Context;
 use anyhow::{Context as _, Result};
 use clap::Subcommand;

@@ -1,4 +1,4 @@
-use crate::output::print_table;
+use crate::util::output::print_table;
 use serde::Serialize;
 use serde_json::Value;
 

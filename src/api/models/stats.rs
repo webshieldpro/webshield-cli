@@ -55,7 +55,7 @@ impl DisplayTable for BanStats {
 
     fn display_as_table(&self) {
         if self.bans.is_empty() {
-            crate::output::info(i18n::tr(M::NoBans));
+            crate::util::output::info(i18n::tr(M::NoBans));
         } else {
             DisplayTable::display_as_table(self)
         }

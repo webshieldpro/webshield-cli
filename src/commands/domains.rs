@@ -1,13 +1,13 @@
 //! Domain (zone) management.
 
-use crate::api::_models::domain::{
+use crate::api::models::domain::{
     DomainAdd, DomainAddReq, DomainCheckDelegation, DomainDelete, DomainInner, DomainList, Domains,
 };
 use crate::api::table::ProgramRes;
 use crate::api::Client;
 use crate::commands::confirm;
 use crate::i18n::{self, M};
-use crate::output::{info, success, warn};
+use crate::util::output::{info, success, warn};
 use crate::Context;
 use anyhow::Result;
 use clap::Subcommand;
@@ -61,8 +61,7 @@ async fn check(client: &Client, name: &str) -> Result<()> {
 
     let result = client.n_send::<DomainCheckDelegation>(domain.id).await?;
 
-    let check: crate::api::models::DelegationCheck = serde_json::from_value(result)?;
-    match check.delegated {
+    match result.delegated {
         Some(true) => success(i18n::f(M::DelegationOk, &[("name", &domain.name)])),
         Some(false) => {
             warn(i18n::f(
@@ -70,26 +69,26 @@ async fn check(client: &Client, name: &str) -> Result<()> {
                 &[("name", &domain.name)],
             ));
 
-            if !check.current_ns.is_empty() {
+            if !result.current_ns.is_empty() {
                 info(i18n::f(
                     M::DelegationCurrentNs,
-                    &[("ns", &check.current_ns.join(", "))],
+                    &[("ns", &result.current_ns.join(", "))],
                 ));
             }
 
-            if !check.missing_ns.is_empty() {
+            if !result.missing_ns.is_empty() {
                 warn(i18n::f(
                     M::DelegationMissingNs,
-                    &[("ns", &check.missing_ns.join(", "))],
+                    &[("ns", &result.missing_ns.join(", "))],
                 ));
             }
-            if !check.extra_ns.is_empty() {
+            if !result.extra_ns.is_empty() {
                 warn(i18n::f(
                     M::DelegationExtraNs,
-                    &[("ns", &check.extra_ns.join(", "))],
+                    &[("ns", &result.extra_ns.join(", "))],
                 ));
             }
-            if check.missing_ns.is_empty() && check.extra_ns.is_empty() {
+            if result.missing_ns.is_empty() && result.extra_ns.is_empty() {
                 warn(i18n::tr(M::DelegationNoNs));
             }
             info(i18n::tr(M::DelegationPropagationNote));

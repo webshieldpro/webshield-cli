@@ -1,5 +1,5 @@
 //! Shared typed models of `/api/v1` responses (endpoint-specific models live
-//! in `_models/`). Fields the server may omit are marked `#[serde(default)]`
+//! in `models/`). Fields the server may omit are marked `#[serde(default)]`
 //! so the CLI does not break on schema extensions.
 
 use serde::{Deserialize, Serialize};

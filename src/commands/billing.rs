@@ -1,6 +1,6 @@
 //! Billing: balance, traffic usage, tariffs (scope `billing`, read-only).
 
-use crate::api::_models::billing::{
+use crate::api::models::billing::{
     Billing, BillingBalance, BillingDomainUsage, BillingTariffs, BillingTariffsGet, BillingUsage,
 };
 use crate::api::table::ProgramRes;

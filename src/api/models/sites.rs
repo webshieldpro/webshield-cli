@@ -4,7 +4,7 @@ use crate::api::request_desc::{ListRequestDesc, RequestDesc};
 use crate::api::table::DisplayTable;
 use crate::i18n;
 use crate::i18n::M;
-use crate::output::success;
+use crate::util::output::success;
 use reqwest::multipart::Form;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
@@ -101,7 +101,7 @@ impl DisplayTable for SitesList {
                     s.status.clone().unwrap_or_default(),
                     s.content_version.map(|v| v.to_string()).unwrap_or_default(),
                     s.size_bytes
-                        .map(crate::output::fmt_size)
+                        .map(crate::util::output::fmt_size)
                         .unwrap_or_default(),
                 ]
             })

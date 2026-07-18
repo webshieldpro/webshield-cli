@@ -6,7 +6,7 @@ mod api;
 mod commands;
 mod config;
 mod i18n;
-mod output;
+mod util;
 
 use anyhow::{bail, Result};
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
@@ -17,7 +17,7 @@ use crate::api::table::ProgramRes;
 use api::Client;
 use config::Config;
 use i18n::Lang;
-use output::OutputFormat;
+use util::output::OutputFormat;
 
 #[derive(Parser)]
 #[command(

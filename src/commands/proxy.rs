@@ -1,6 +1,6 @@
 //! Edge settings of proxied/redirect hosts (`/nginx-configs`, scope `proxy`).
 
-use crate::api::_models::proxy::{
+use crate::api::models::proxy::{
     Proxies, ProxyData, ProxyDecl, ProxyDelete, ProxyInfo, ProxyNew, ProxyPatch, ProxyResolve,
 };
 use crate::api::table::ProgramRes;

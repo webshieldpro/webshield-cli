@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::api::_models::sites::{
+use crate::api::models::sites::{
     FilesResponseSite, SiteAdd, SiteAddReq, SiteDisable, SiteFiles, SiteFilesDeleteBatch,
     SiteFilesPaths, SiteFilesUploadBatch, SiteGet, SitePublish, SitePublishBucketReq,
     SitePublishFromBucket, Sites, SitesList, SitesListInner,
@@ -17,7 +17,7 @@ use crate::api::table::ProgramRes;
 use crate::api::Client;
 use crate::commands::domains::resolve_domain;
 use crate::i18n::{self, M};
-use crate::output::success;
+use crate::util::output::{info, success};
 use crate::Context;
 use anyhow::{bail, Context as _, Result};
 use clap::Subcommand;
@@ -271,11 +271,11 @@ async fn publish(client: &Client, site_id: i64, dir: &Path, dry_run: bool) -> Re
     );
 
     if to_upload.is_empty() && to_delete.is_empty() {
-        crate::output::info(i18n::tr(M::PublishNoChanges));
+        info(i18n::tr(M::PublishNoChanges));
         return Ok(());
     }
     if dry_run {
-        crate::output::info(i18n::tr(M::PublishDryRun));
+        info(i18n::tr(M::PublishDryRun));
         return Ok(());
     }
 
@@ -422,7 +422,7 @@ async fn delete_all(client: &Client, site_id: i64, paths: &[String]) -> Result<(
             )
             .await?;
     }
-    crate::output::info(i18n::f(
+    info(i18n::f(
         M::DeletedFiles,
         &[("count", &paths.len().to_string())],
     ));
