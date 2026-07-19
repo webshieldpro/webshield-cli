@@ -226,6 +226,7 @@ async fn change(
     ttl: i64,
     op: Op,
 ) -> Result<String> {
+    // TODO
     let d = resolve_domain(client, domain).await?;
     let ty = rr_type.to_uppercase();
     // Canonical form also makes set/remove match the server-stored values.

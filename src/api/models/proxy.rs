@@ -1,4 +1,4 @@
-use crate::api::request_desc::{ListRequestDesc, RequestDesc};
+use crate::api::request_desc::RequestDesc;
 use crate::api::table::DisplayTable;
 use crate::i18n;
 use crate::i18n::M;
@@ -59,11 +59,11 @@ pub struct ProxyData {
 
 impl DisplayTable for ProxyData {
     fn headers(&self) -> Vec<&'static str> {
-        Proxies(vec![]).headers()
+        Proxies::from(vec![]).headers()
     }
 
     fn rows(&self) -> Vec<Vec<String>> {
-        Proxies(vec![ProxyData::clone(self)]).rows()
+        Proxies::from(vec![ProxyData::clone(self)]).rows()
     }
 }
 
@@ -115,12 +115,14 @@ impl RequestDesc for ProxyDelete {
     }
 }
 
-#[derive(Serialize)]
-pub struct Proxies(Vec<ProxyData>);
+#[derive(Serialize, Deserialize)]
+pub struct Proxies {
+    pub results: Vec<ProxyData>,
+}
 
 impl From<Vec<ProxyData>> for Proxies {
     fn from(configs: Vec<ProxyData>) -> Self {
-        Self(configs)
+        Self { results: configs }
     }
 }
 
@@ -138,7 +140,7 @@ impl DisplayTable for Proxies {
 
     fn rows(&self) -> Vec<Vec<String>> {
         let yes = i18n::tr(M::Yes);
-        self.0
+        self.results
             .iter()
             .map(|c| {
                 vec![
@@ -164,11 +166,30 @@ impl DisplayTable for Proxies {
 
 pub struct ProxyResolve;
 
-impl ListRequestDesc for ProxyResolve {
-    type Params = ();
-    type Item = ProxyData;
+impl RequestDesc for ProxyResolve {
+    type Params = String;
+    type Request = ();
+    type Response = Proxies;
 
-    fn get_url(_: ()) -> impl AsRef<str> {
-        "nginx-configs"
+    fn get_url(hostname: Self::Params) -> impl AsRef<str> {
+        format!("nginx-configs?hostname={}", hostname)
+    }
+    fn method() -> Method {
+        Method::GET
+    }
+}
+
+pub struct Proxy;
+
+impl RequestDesc for Proxy {
+    type Params = u32;
+    type Request = ();
+    type Response = Proxies;
+
+    fn get_url(page: Self::Params) -> impl AsRef<str> {
+        format!("nginx-configs?page={}", page)
+    }
+    fn method() -> Method {
+        Method::GET
     }
 }

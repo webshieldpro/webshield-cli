@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use crate::api::models::sites::{
     FilesResponseSite, SiteAdd, SiteAddReq, SiteDisable, SiteFiles, SiteFilesDeleteBatch,
     SiteFilesPaths, SiteFilesUploadBatch, SiteGet, SitePublish, SitePublishBucketReq,
-    SitePublishFromBucket, Sites, SitesList, SitesListInner,
+    SitePublishFromBucket, Sites, SitesList, SitesListInner, SitesResolve,
 };
 use crate::api::table::ProgramRes;
 use crate::api::Client;
@@ -39,7 +39,10 @@ const HASH_CONCURRENCY: usize = 8;
 #[derive(Subcommand)]
 pub enum SitesCommand {
     /// List static sites.
-    List,
+    List {
+        #[arg(value_name = "PAGE(1..n)")]
+        page: u32,
+    },
     /// Create a static site on a host.
     Create {
         /// Site hostname (e.g. www.example.com).
@@ -82,7 +85,7 @@ pub enum SitesCommand {
 pub async fn run(ctx: &Context, cmd: SitesCommand) -> Result<ProgramRes> {
     let client = ctx.client()?;
     match cmd {
-        SitesCommand::List => list(&client).await.map(ProgramRes::from),
+        SitesCommand::List { page } => list(&client, page).await.map(ProgramRes::from),
         SitesCommand::Create { hostname, domain } => create(&client, &hostname, &domain)
             .await
             .map(ProgramRes::from),
@@ -95,7 +98,7 @@ pub async fn run(ctx: &Context, cmd: SitesCommand) -> Result<ProgramRes> {
             // --site-id обходит листинг сайтов: узкому токену sites:publish его достаточно.
             let id = match (site_id, hostname) {
                 (Some(id), _) => id,
-                (None, Some(host)) => resolve_site(&client, &host).await?.id,
+                (None, Some(host)) => resolve_site(&client, host).await?.id,
                 (None, None) => bail!(i18n::tr(M::PublishNeedsSiteRef)),
             };
             publish(&client, id, &dir, dry_run)
@@ -107,14 +110,14 @@ pub async fn run(ctx: &Context, cmd: SitesCommand) -> Result<ProgramRes> {
             bucket,
             path,
         } => {
-            let site = resolve_site(&client, &hostname).await?;
+            let site = resolve_site(&client, hostname).await?;
             publish_from_bucket(&client, site.id, &bucket, &path)
                 .await
                 .map(ProgramRes::from)
         }
-        SitesCommand::Files { hostname } => files(&client, &hostname).await.map(ProgramRes::from),
+        SitesCommand::Files { hostname } => files(&client, hostname).await.map(ProgramRes::from),
         SitesCommand::Disable { hostname } => {
-            let site = resolve_site(&client, &hostname).await?;
+            let site = resolve_site(&client, hostname).await?;
             client.n_send::<SiteDisable>(site.id).await?;
             success(i18n::f(M::SiteDisabled, &[("host", &site.hostname)]));
             Ok(ProgramRes::Idle)
@@ -122,20 +125,20 @@ pub async fn run(ctx: &Context, cmd: SitesCommand) -> Result<ProgramRes> {
     }
 }
 
-async fn resolve_site(client: &Client, hostname: &str) -> Result<SitesListInner> {
-    let sites = client.n_list::<Sites>(()).await?;
-
+async fn resolve_site(client: &Client, hostname: String) -> Result<SitesListInner> {
     let needle = hostname.trim().to_lowercase();
 
+    let sites = client.n_send::<SitesResolve>(needle).await?;
+
     sites
+        .results
         .into_iter()
-        .find(|s| s.hostname.eq_ignore_ascii_case(&needle))
-        .ok_or_else(|| anyhow::anyhow!(i18n::f(M::NotFoundSite, &[("host", hostname)])))
+        .next()
+        .ok_or_else(|| anyhow::anyhow!(i18n::f(M::NotFoundSite, &[("host", &hostname)])))
 }
 
-async fn list(client: &Client) -> Result<SitesList> {
-    let results = client.n_list::<Sites>(()).await?;
-    Ok(SitesList { results })
+async fn list(client: &Client, page: u32) -> Result<SitesList> {
+    client.n_send::<Sites>(page).await
 }
 
 async fn create(client: &Client, hostname: &str, domain: &str) -> Result<SitesListInner> {
@@ -153,7 +156,7 @@ async fn create(client: &Client, hostname: &str, domain: &str) -> Result<SitesLi
     Ok(site)
 }
 
-async fn files(client: &Client, hostname: &str) -> Result<FilesResponseSite> {
+async fn files(client: &Client, hostname: String) -> Result<FilesResponseSite> {
     let site = resolve_site(client, hostname).await?;
 
     let resp: FilesResponseSite = client.n_send::<SiteFiles>(site.id).await?;

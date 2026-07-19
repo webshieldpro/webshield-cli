@@ -1,6 +1,6 @@
 #![allow(refining_impl_trait_reachable)]
 
-use crate::api::request_desc::{ListRequestDesc, RequestDesc};
+use crate::api::request_desc::RequestDesc;
 use crate::api::table::DisplayTable;
 use crate::i18n;
 use crate::i18n::M;
@@ -62,20 +62,9 @@ impl RequestDesc for SiteAdd {
     }
 }
 
-pub struct Sites;
-
 #[derive(Deserialize, Serialize)]
 pub struct SitesList {
     pub results: Vec<SitesListInner>,
-}
-
-impl ListRequestDesc for Sites {
-    type Params = ();
-    type Item = SitesListInner;
-
-    fn get_url(_: ()) -> &'static str {
-        "static-sites"
-    }
 }
 
 impl DisplayTable for SitesList {
@@ -109,12 +98,46 @@ impl DisplayTable for SitesList {
     }
 }
 
-pub struct SiteFiles;
+pub struct SitesResolve;
+
+impl RequestDesc for SitesResolve {
+    type Params = String;
+
+    type Request = ();
+    type Response = SitesList;
+
+    fn get_url(hostname: Self::Params) -> impl AsRef<str> {
+        format!("static-sites?hostname={hostname}")
+    }
+
+    fn method() -> Method {
+        Method::GET
+    }
+}
+
+pub struct Sites;
+
+impl RequestDesc for Sites {
+    type Params = u32;
+
+    type Request = ();
+    type Response = SitesList;
+
+    fn get_url(page: Self::Params) -> impl AsRef<str> {
+        format!("static-sites?page={page}")
+    }
+
+    fn method() -> Method {
+        Method::GET
+    }
+}
+
 #[derive(Deserialize, Serialize)]
 pub struct FilesResponseSite {
     #[serde(default)]
     pub files: Vec<ServerFileSite>,
 }
+pub struct SiteFiles;
 
 impl DisplayTable for FilesResponseSite {
     fn headers(&self) -> Vec<&'static str> {

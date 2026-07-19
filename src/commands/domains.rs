@@ -2,11 +2,12 @@
 
 use crate::api::models::domain::{
     DomainAdd, DomainAddReq, DomainCheckDelegation, DomainDelete, DomainInner, DomainList, Domains,
+    ResolveDomains,
 };
 use crate::api::table::ProgramRes;
 use crate::api::Client;
-use crate::commands::confirm;
 use crate::i18n::{self, M};
+use crate::util::input::confirm;
 use crate::util::output::{info, success, warn};
 use crate::Context;
 use anyhow::Result;
@@ -15,7 +16,10 @@ use clap::Subcommand;
 #[derive(Subcommand)]
 pub enum DomainsCommand {
     /// List your domains.
-    List,
+    List {
+        #[arg(value_name = "PAGE(1..n)")]
+        page: u32,
+    },
     /// Add a domain (create the zone).
     Add {
         /// Domain name (e.g. example.com).
@@ -35,25 +39,29 @@ pub enum DomainsCommand {
 pub async fn run(ctx: &Context, cmd: DomainsCommand) -> Result<ProgramRes> {
     let client = ctx.client()?;
     match cmd {
-        DomainsCommand::List => list(&client).await.map(ProgramRes::from),
+        DomainsCommand::List { page } => list(&client, page).await.map(ProgramRes::from),
         DomainsCommand::Add { name, import } => {
             add(&client, name, import).await.map(ProgramRes::from)
         }
         DomainsCommand::Get { name } => get(&client, &name).await.map(ProgramRes::from),
-
         DomainsCommand::Remove { name } => {
-            let domain = resolve_domain(&client, &name).await?;
-            confirm(
-                ctx.yes,
-                &i18n::f(M::ConfirmDeleteDomain, &[("name", &domain.name)]),
-            )?;
-            client.n_send::<DomainDelete>(domain.id).await?;
-            success(i18n::f(M::DomainDeleted, &[("name", &domain.name)]));
-
-            Ok(ProgramRes::Idle)
+            remove(ctx.yes, &client, &name).await.map(ProgramRes::from)
         }
         DomainsCommand::Check { name } => check(&client, &name).await.map(ProgramRes::from),
     }
+}
+
+async fn remove(yes: bool, client: &Client, name: &str) -> Result<()> {
+    let domain = resolve_domain(client, name).await?;
+    confirm(
+        yes,
+        &i18n::f(M::ConfirmDeleteDomain, &[("name", &domain.name)]),
+    )?;
+
+    client.n_send::<DomainDelete>(domain.id).await?;
+
+    success(i18n::f(M::DomainDeleted, &[("name", &domain.name)]));
+    Ok(())
 }
 
 async fn check(client: &Client, name: &str) -> Result<()> {
@@ -123,18 +131,19 @@ async fn add(client: &Client, name: String, import: String) -> Result<()> {
     Ok(())
 }
 
-async fn list(client: &Client) -> Result<DomainList> {
-    let results = client.n_list::<Domains>(()).await?;
-    Ok(DomainList { results })
+async fn list(client: &Client, page: u32) -> Result<DomainList> {
+    client.n_send::<Domains>(page).await
 }
 
-/// Resolves the user's domain by name (case-insensitive, trailing dot ignored).
+/// Resolves the user's domain by name.
 pub async fn resolve_domain(client: &Client, name: &str) -> Result<DomainInner> {
     let needle = name.trim().trim_end_matches('.').to_lowercase();
 
-    let domains = client.n_list::<Domains>(()).await?;
+    let domains = client.n_send::<ResolveDomains>(needle).await?;
+
     domains
+        .results
         .into_iter()
-        .find(|d| d.name.trim_end_matches('.').eq_ignore_ascii_case(&needle))
+        .next()
         .ok_or_else(|| anyhow::anyhow!(i18n::f(M::DomainNotFound, &[("name", name)])))
 }

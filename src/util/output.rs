@@ -37,7 +37,7 @@ pub fn fmt_size(bytes: i64) -> String {
 /// Builds and prints a table with headers and rows.
 pub fn print_table(headers: &[&str], rows: Vec<Vec<String>>) {
     if rows.is_empty() {
-        println!("{}", style(crate::i18n::tr(crate::i18n::M::Empty)).dim());
+        println!("{}", style(i18n::tr(i18n::M::Empty)).dim());
         return;
     }
     let mut table = Table::new();

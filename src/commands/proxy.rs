@@ -1,13 +1,14 @@
 //! Edge settings of proxied/redirect hosts (`/nginx-configs`, scope `proxy`).
 
 use crate::api::models::proxy::{
-    Proxies, ProxyData, ProxyDecl, ProxyDelete, ProxyInfo, ProxyNew, ProxyPatch, ProxyResolve,
+    Proxies, Proxy, ProxyData, ProxyDecl, ProxyDelete, ProxyInfo, ProxyNew, ProxyPatch,
+    ProxyResolve,
 };
 use crate::api::table::ProgramRes;
 use crate::api::Client;
-use crate::commands::confirm;
 use crate::commands::domains::resolve_domain;
 use crate::i18n::{self, M};
+use crate::util::input::confirm;
 use crate::Context;
 use anyhow::Result;
 use clap::{Args, Subcommand};
@@ -26,7 +27,10 @@ pub struct SetImpl {
 #[derive(Subcommand)]
 pub enum ProxyCommand {
     /// List proxy/redirect host configs.
-    List,
+    List {
+        #[arg(value_name = "PAGE(1..n)")]
+        page: u32,
+    },
     /// Show a host config.
     Get { hostname: String },
     /// Create or update a host config (partial update if it exists).
@@ -38,7 +42,7 @@ pub enum ProxyCommand {
 pub async fn run(ctx: &Context, cmd: ProxyCommand) -> Result<ProgramRes> {
     let client = ctx.client()?;
     match cmd {
-        ProxyCommand::List => list(&client).await.map(ProgramRes::from),
+        ProxyCommand::List { page } => list(&client, page).await.map(ProgramRes::from),
         ProxyCommand::Get { hostname } => resolve_proxy(&client, &hostname)
             .await
             .map(ProgramRes::from),
@@ -61,28 +65,29 @@ pub async fn run(ctx: &Context, cmd: ProxyCommand) -> Result<ProgramRes> {
     }
 }
 
-async fn _find_config(client: &Client, hostname: &str) -> Result<ProxyData> {
-    let configs = client.n_list::<ProxyResolve>(()).await?;
-    let c = configs
+async fn _find_config(client: &Client, hostname: String) -> Result<ProxyData> {
+    let config = client.n_send::<ProxyResolve>(hostname.clone()).await?;
+
+    config
+        .results
         .into_iter()
-        .find(|c| c.hostname.eq_ignore_ascii_case(hostname));
-    c.ok_or_else(|| anyhow::anyhow!(i18n::f(M::NotFoundProxy, &[("host", hostname)])))
+        .next()
+        .ok_or_else(|| anyhow::anyhow!(i18n::f(M::NotFoundProxy, &[("host", &hostname)])))
 }
 
 async fn resolve_proxy(client: &Client, hostname: &str) -> Result<ProxyData> {
     let needle = hostname.trim().to_lowercase();
-    _find_config(client, &needle).await
+    _find_config(client, needle).await
 }
 
-async fn list(client: &Client) -> Result<Proxies> {
-    let configs = client.n_list::<ProxyResolve>(()).await?;
-    Ok(Proxies::from(configs))
+async fn list(client: &Client, page: u32) -> Result<Proxies> {
+    client.n_send::<Proxy>(page).await
 }
 
 /// Upsert: PATCH when the config already exists, otherwise POST (domain required).
 async fn set(client: &Client, set: SetImpl) -> Result<String> {
     let hostname = set.hostname;
-    let existing = _find_config(client, &hostname).await.ok();
+    let existing = _find_config(client, hostname.clone()).await.ok();
 
     let res = if let Some(cfg) = existing {
         // Partial update of an existing config.

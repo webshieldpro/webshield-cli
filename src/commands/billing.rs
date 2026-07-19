@@ -30,9 +30,7 @@ pub async fn run(ctx: &Context, cmd: BillingCommand) -> Result<ProgramRes> {
 }
 
 async fn balance(client: &Client) -> Result<BillingBalance> {
-    let payload = client.n_send::<Billing>(()).await?;
-
-    Ok(payload)
+    client.n_send::<Billing>(()).await
 }
 
 async fn usage(client: &Client, domain: &str) -> Result<BillingDomainUsage> {

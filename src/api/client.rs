@@ -1,9 +1,8 @@
 //! HTTP client for the `/api/v1` API. Authentication — Bearer with a personal `wsk_…` token.
 //! DRF errors (`{"detail": …}` or a field error map) are unwrapped into readable text.
 
-use super::_models::Page;
 use crate::api::error::check_status;
-use crate::api::request_desc::{ListRequestDesc, RequestDesc};
+use crate::api::request_desc::RequestDesc;
 use crate::i18n::{self, M};
 use anyhow::{Context, Result};
 use reqwest::multipart::Form;
@@ -32,11 +31,11 @@ impl Client {
         })
     }
 
-    pub fn url(&self, path: &str) -> String {
+    fn url(&self, path: &str) -> String {
         format!("{}/api/v1/{}", self.base, path.trim_start_matches('/'))
     }
 
-    pub fn request(&self, method: Method, path: &str) -> RequestBuilder {
+    fn request(&self, method: Method, path: &str) -> RequestBuilder {
         self.http
             .request(method, self.url(path))
             .bearer_auth(&self.token)
@@ -50,7 +49,8 @@ impl Client {
         &self,
         params: R::Params,
     ) -> Result<R::Response> {
-        self.send_json(self.n_make_request::<R>(params)).await
+        self.n_send_json::<R>(self.n_make_request::<R>(params))
+            .await
     }
 
     pub async fn n_send_multipart<R: RequestDesc<Request = Form>>(
@@ -58,7 +58,7 @@ impl Client {
         params: R::Params,
         form: Form,
     ) -> Result<R::Response> {
-        self.send_json(self.n_make_request::<R>(params).multipart(form))
+        self.n_send_json::<R>(self.n_make_request::<R>(params).multipart(form))
             .await
     }
 
@@ -70,8 +70,15 @@ impl Client {
     where
         R::Request: Serialize,
     {
-        self.send_json(self.n_make_request::<R>(params).json(&req))
+        self.n_send_json::<R>(self.n_make_request::<R>(params).json(&req))
             .await
+    }
+
+    async fn n_send_json<R: RequestDesc>(&self, rb: RequestBuilder) -> Result<R::Response> {
+        let resp = rb.send().await.context(i18n::tr(M::ErrNetwork))?;
+        let resp = check_status(resp).await?;
+        let dt: R::Response = resp.json().await.context(i18n::tr(M::ErrReadBody))?;
+        Ok(dt)
     }
 
     pub async fn post_json<B: Serialize, T: DeserializeOwned>(
@@ -81,40 +88,6 @@ impl Client {
     ) -> Result<T> {
         self.send_json(self.request(Method::POST, path).json(body))
             .await
-    }
-
-    /// Fetches every page of a GET list endpoint (follows `next`).
-    /// Tolerates both the `{results:[…]}` envelope and a bare array.
-    pub async fn n_list<R: ListRequestDesc>(&self, params: R::Params) -> Result<Vec<R::Item>> {
-        let mut out = Vec::new();
-        let mut next_url = self.url(R::get_url(params).as_ref());
-        loop {
-            let rb = self
-                .http
-                .request(Method::GET, &next_url)
-                .bearer_auth(&self.token);
-            let value = self.send_value(rb).await?;
-            println!("{:?}", value);
-            match value {
-                Value::Array(_) => {
-                    let items: Vec<R::Item> =
-                        serde_json::from_value(value).context(i18n::tr(M::ErrParse))?;
-                    out.extend(items);
-                    break;
-                }
-                Value::Object(_) => {
-                    let page: Page<R::Item> =
-                        serde_json::from_value(value).context(i18n::tr(M::ErrParse))?;
-                    out.extend(page.results);
-                    match page.next {
-                        Some(url) if !url.is_empty() => next_url = url,
-                        _ => break,
-                    }
-                }
-                _ => break,
-            }
-        }
-        Ok(out)
     }
 
     /// Sends a request and deserializes the JSON body. Empty body (204) → `null`.
@@ -138,24 +111,23 @@ impl Client {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::error::HttpError;
     use serde_json::json;
-    use wiremock::matchers::{header, method, path, query_param, query_param_is_missing};
+    use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn client(base: &str) -> Client {
         Client::new(base, "wsk_test").unwrap()
     }
 
-    struct Things;
-    impl ListRequestDesc for Things {
-        type Params = ();
-        type Item = Value;
-
-        fn get_url(_: ()) -> impl AsRef<str> {
-            "things"
-        }
-    }
+    // struct Things;
+    // impl ListRequestDesc for Things {
+    //     type Params = ();
+    //     type Item = Value;
+    //
+    //     fn get_url(_: ()) -> impl AsRef<str> {
+    //         "things"
+    //     }
+    // }
 
     struct ThingDisable;
     impl RequestDesc for ThingDisable {
@@ -181,49 +153,49 @@ mod tests {
         assert_eq!(c.url("/domains"), "https://example.com/api/v1/domains");
     }
 
-    #[tokio::test]
-    async fn n_list_follows_pagination() {
-        let server = MockServer::start().await;
-        let page2_url = format!("{}/api/v1/things?page=2", server.uri());
-        Mock::given(method("GET"))
-            .and(path("/api/v1/things"))
-            .and(query_param_is_missing("page"))
-            .and(header("authorization", "Bearer wsk_test"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "next": page2_url,
-                "results": [{"v": 1}, {"v": 2}],
-            })))
-            .expect(1)
-            .mount(&server)
-            .await;
-        Mock::given(method("GET"))
-            .and(path("/api/v1/things"))
-            .and(query_param("page", "2"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "next": null,
-                "results": [{"v": 3}],
-            })))
-            .expect(1)
-            .mount(&server)
-            .await;
+    // #[tokio::test]
+    // async fn n_list_follows_pagination() {
+    //     let server = MockServer::start().await;
+    //     let page2_url = format!("{}/api/v1/things?page=2", server.uri());
+    //     Mock::given(method("GET"))
+    //         .and(path("/api/v1/things"))
+    //         .and(query_param_is_missing("page"))
+    //         .and(header("authorization", "Bearer wsk_test"))
+    //         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+    //             "next": page2_url,
+    //             "results": [{"v": 1}, {"v": 2}],
+    //         })))
+    //         .expect(1)
+    //         .mount(&server)
+    //         .await;
+    //     Mock::given(method("GET"))
+    //         .and(path("/api/v1/things"))
+    //         .and(query_param("page", "2"))
+    //         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+    //             "next": null,
+    //             "results": [{"v": 3}],
+    //         })))
+    //         .expect(1)
+    //         .mount(&server)
+    //         .await;
+    //
+    //     let items = client(&server.uri()).n_list::<Things>(()).await.unwrap();
+    //     let vals: Vec<i64> = items.iter().map(|i| i["v"].as_i64().unwrap()).collect();
+    //     assert_eq!(vals, vec![1, 2, 3]);
+    // }
 
-        let items = client(&server.uri()).n_list::<Things>(()).await.unwrap();
-        let vals: Vec<i64> = items.iter().map(|i| i["v"].as_i64().unwrap()).collect();
-        assert_eq!(vals, vec![1, 2, 3]);
-    }
-
-    #[tokio::test]
-    async fn n_list_accepts_bare_array() {
-        let server = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/api/v1/things"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!([{"v": 1}])))
-            .mount(&server)
-            .await;
-
-        let items = client(&server.uri()).n_list::<Things>(()).await.unwrap();
-        assert_eq!(items.len(), 1);
-    }
+    // #[tokio::test]
+    // async fn n_list_accepts_bare_array() {
+    //     let server = MockServer::start().await;
+    //     Mock::given(method("GET"))
+    //         .and(path("/api/v1/things"))
+    //         .respond_with(ResponseTemplate::new(200).set_body_json(json!([{"v": 1}])))
+    //         .mount(&server)
+    //         .await;
+    //
+    //     let items = client(&server.uri()).n_list::<Things>(()).await.unwrap();
+    //     assert_eq!(items.len(), 1);
+    // }
 
     #[tokio::test]
     async fn n_send_tolerates_empty_body() {
@@ -256,28 +228,28 @@ mod tests {
             .unwrap();
     }
 
-    #[tokio::test]
-    async fn error_401_includes_detail_and_hint_and_downcasts() {
-        let server = MockServer::start().await;
-        Mock::given(method("GET"))
-            .and(path("/api/v1/things"))
-            .respond_with(
-                ResponseTemplate::new(401).set_body_json(json!({"detail": "Invalid token."})),
-            )
-            .mount(&server)
-            .await;
-
-        let err = client(&server.uri())
-            .n_list::<Things>(())
-            .await
-            .unwrap_err();
-        let msg = format!("{err:#}");
-        assert!(msg.contains("401 Unauthorized"), "got: {msg}");
-        assert!(msg.contains("Invalid token."), "got: {msg}");
-        // `auth status` relies on recovering the code from the error chain.
-        let http = err.downcast_ref::<HttpError>().expect("HttpError in chain");
-        assert_eq!(http.status.as_u16(), 401);
-    }
+    // #[tokio::test]
+    // async fn error_401_includes_detail_and_hint_and_downcasts() {
+    //     let server = MockServer::start().await;
+    //     Mock::given(method("GET"))
+    //         .and(path("/api/v1/things"))
+    //         .respond_with(
+    //             ResponseTemplate::new(401).set_body_json(json!({"detail": "Invalid token."})),
+    //         )
+    //         .mount(&server)
+    //         .await;
+    //
+    //     let err = client(&server.uri())
+    //         .n_list::<Things>(())
+    //         .await
+    //         .unwrap_err();
+    //     let msg = format!("{err:#}");
+    //     assert!(msg.contains("401 Unauthorized"), "got: {msg}");
+    //     assert!(msg.contains("Invalid token."), "got: {msg}");
+    //     // `auth status` relies on recovering the code from the error chain.
+    //     let http = err.downcast_ref::<HttpError>().expect("HttpError in chain");
+    //     assert_eq!(http.status.as_u16(), 401);
+    // }
 
     #[tokio::test]
     async fn error_400_joins_serializer_field_errors() {

@@ -1,10 +1,9 @@
-use crate::api::request_desc::{ListRequestDesc, RequestDesc};
+use crate::api::request_desc::RequestDesc;
 use crate::api::table::DisplayTable;
 use crate::i18n;
 use crate::i18n::M;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
-use crate::api::_models::DelegationCheck;
 
 #[derive(Deserialize, Serialize)]
 pub struct Tariff {
@@ -76,8 +75,7 @@ impl RequestDesc for DomainAdd {
     }
 }
 
-pub struct Domains;
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct DomainList {
     pub results: Vec<DomainInner>,
 }
@@ -96,12 +94,35 @@ impl DisplayTable for DomainList {
     }
 }
 
-impl ListRequestDesc for Domains {
-    type Params = ();
-    type Item = DomainInner;
+pub struct ResolveDomains;
 
-    fn get_url(_: ()) -> impl AsRef<str> {
-        "domains" // ?page=1
+impl RequestDesc for ResolveDomains {
+    type Params = String;
+    type Request = ();
+    type Response = DomainList;
+
+    fn get_url(name: Self::Params) -> impl AsRef<str> {
+        format!("domains?name={}", name)
+    }
+
+    fn method() -> Method {
+        Method::GET
+    }
+}
+
+pub struct Domains;
+
+impl RequestDesc for Domains {
+    type Params = u32;
+    type Request = ();
+    type Response = DomainList;
+
+    fn get_url(page: Self::Params) -> impl AsRef<str> {
+        format!("domains?page={}", page)
+    }
+
+    fn method() -> Method {
+        Method::GET
     }
 }
 
@@ -120,6 +141,25 @@ impl RequestDesc for DomainDelete {
     fn method() -> Method {
         Method::DELETE
     }
+}
+
+/// Result of `POST domains/{id}/check-delegation`. The check is strict:
+/// the NS set at the parent zone must match the WebShield set exactly, so
+/// `missing_ns`/`extra_ns` explain why `delegated` is `false`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DelegationCheck {
+    #[serde(default)]
+    pub delegated: Option<bool>,
+    #[serde(default)]
+    pub checked_at: Option<String>,
+    #[serde(default)]
+    pub current_ns: Vec<String>,
+    #[serde(default)]
+    pub missing_ns: Vec<String>,
+    #[serde(default)]
+    pub extra_ns: Vec<String>,
+    #[serde(default)]
+    pub detail: Option<String>,
 }
 
 pub struct DomainCheckDelegation;

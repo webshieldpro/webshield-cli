@@ -3,8 +3,8 @@
 //! Primary mode — a personal token `wsk_…` (created in the dashboard, least-privilege
 //! scopes). JWT email login is not implemented yet (needed for token/S3 management).
 
-use crate::api::models::domain::Domains;
 use crate::api::error::HttpError;
+use crate::api::models::billing::Billing;
 use crate::api::table::ProgramRes;
 use crate::config::{Config, Profile, DEFAULT_API_URL};
 use crate::i18n::{self, M};
@@ -112,7 +112,7 @@ async fn status(ctx: &Context) -> Result<()> {
         info(i18n::tr(M::LoginHint));
     } else {
         let client = ctx.client()?;
-        let resp = client.n_list::<Domains>(()).await;
+        let resp = client.n_send::<Billing>(()).await; // Any route
 
         let verdict = match resp {
             Ok(_) => style(i18n::tr(M::AccessOk).to_string()).green(),
@@ -153,7 +153,7 @@ fn logout(ctx: &Context) -> Result<()> {
 
 /// Lightweight token check: GET /domains, only the status code matters.
 async fn probe(api_url: &str, token: &str) -> Result<reqwest::StatusCode> {
-    let url = format!("{}/api/v1/domains", api_url.trim_end_matches('/'));
+    let url = format!("{}/api/v1/domains", api_url.trim_end_matches('/')); // TODO
     let resp = reqwest::Client::new()
         .get(url)
         .bearer_auth(token)
