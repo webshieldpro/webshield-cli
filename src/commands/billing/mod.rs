@@ -21,7 +21,7 @@ pub enum BillingCommand {
 }
 
 pub async fn run(ctx: &Context, cmd: BillingCommand) -> Result<ProgramRes> {
-    let client = ctx.client()?;
+    let client = ctx.new_client()?;
     match cmd {
         BillingCommand::Balance => balance(&client).await.map(ProgramRes::from),
         BillingCommand::Usage { domain } => usage(&client, &domain).await.map(ProgramRes::from),
@@ -30,18 +30,18 @@ pub async fn run(ctx: &Context, cmd: BillingCommand) -> Result<ProgramRes> {
 }
 
 async fn balance(client: &Client) -> Result<BillingBalance> {
-    client.n_send::<Billing>(()).await
+    client.send::<Billing>(()).await
 }
 
 async fn usage(client: &Client, domain: &str) -> Result<BillingDomainUsage> {
     let d = resolve_domain(client, domain).await?;
-    let usage = client.n_send::<BillingUsage>(d.id).await?;
+    let usage = client.send::<BillingUsage>(d.id).await?;
     Ok(usage)
 }
 
 async fn tariffs(client: &Client, domain: &str) -> Result<BillingTariffsGet> {
     let d = resolve_domain(client, domain).await?;
-    let payload = client.n_send::<BillingTariffs>(d.id).await?;
+    let payload = client.send::<BillingTariffs>(d.id).await?;
 
     Ok(payload)
 }

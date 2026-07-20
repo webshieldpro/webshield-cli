@@ -6,6 +6,7 @@ use crate::api::models::domain::{
 };
 use crate::api::table::ProgramRes;
 use crate::api::Client;
+use crate::commands::util::Page;
 use crate::i18n::{self, M};
 use crate::util::input::confirm;
 use crate::util::output::{info, success, warn};
@@ -16,10 +17,7 @@ use clap::Subcommand;
 #[derive(Subcommand)]
 pub enum DomainsCommand {
     /// List your domains.
-    List {
-        #[arg(value_name = "PAGE(1..n)")]
-        page: u32,
-    },
+    List(Page),
     /// Add a domain (create the zone).
     Add {
         /// Domain name (e.g. example.com).
@@ -37,9 +35,9 @@ pub enum DomainsCommand {
 }
 
 pub async fn run(ctx: &Context, cmd: DomainsCommand) -> Result<ProgramRes> {
-    let client = ctx.client()?;
+    let client = ctx.new_client()?;
     match cmd {
-        DomainsCommand::List { page } => list(&client, page).await.map(ProgramRes::from),
+        DomainsCommand::List(page) => list(&client, page.into()).await.map(ProgramRes::from),
         DomainsCommand::Add { name, import } => {
             add(&client, name, import).await.map(ProgramRes::from)
         }
@@ -58,7 +56,7 @@ async fn remove(yes: bool, client: &Client, name: &str) -> Result<()> {
         &i18n::f(M::ConfirmDeleteDomain, &[("name", &domain.name)]),
     )?;
 
-    client.n_send::<DomainDelete>(domain.id).await?;
+    client.send::<DomainDelete>(domain.id).await?;
 
     success(i18n::f(M::DomainDeleted, &[("name", &domain.name)]));
     Ok(())
@@ -67,7 +65,7 @@ async fn remove(yes: bool, client: &Client, name: &str) -> Result<()> {
 async fn check(client: &Client, name: &str) -> Result<()> {
     let domain = resolve_domain(client, name).await?;
 
-    let result = client.n_send::<DomainCheckDelegation>(domain.id).await?;
+    let result = client.send::<DomainCheckDelegation>(domain.id).await?;
 
     match result.delegated {
         Some(true) => success(i18n::f(M::DelegationOk, &[("name", &domain.name)])),
@@ -114,7 +112,7 @@ async fn get(client: &Client, name: &str) -> Result<DomainInner> {
 
 async fn add(client: &Client, name: String, import: String) -> Result<()> {
     let created = client
-        .n_send_ser::<DomainAdd>(
+        .send_json::<DomainAdd>(
             DomainAddReq {
                 name,
                 import_method: import,
@@ -132,14 +130,14 @@ async fn add(client: &Client, name: String, import: String) -> Result<()> {
 }
 
 async fn list(client: &Client, page: u32) -> Result<DomainList> {
-    client.n_send::<Domains>(page).await
+    client.send::<Domains>(page).await
 }
 
 /// Resolves the user's domain by name.
 pub async fn resolve_domain(client: &Client, name: &str) -> Result<DomainInner> {
     let needle = name.trim().trim_end_matches('.').to_lowercase();
 
-    let domains = client.n_send::<ResolveDomains>(needle).await?;
+    let domains = client.send::<ResolveDomains>(needle).await?;
 
     domains
         .results

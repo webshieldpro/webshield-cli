@@ -45,7 +45,7 @@ fn version_prints_crate_version() {
 fn missing_token_is_a_clean_error() {
     let dir = tempfile::tempdir().unwrap();
     webshield(dir.path())
-        .args(["domains", "list"])
+        .args(["domains", "list", "1"])
         .assert()
         .code(1)
         .stderr(predicate::str::contains("no token for profile"));
@@ -85,7 +85,7 @@ fn russian_locale_switches_runtime_messages() {
     let dir = tempfile::tempdir().unwrap();
     webshield(dir.path())
         .env("WS_LANG", "ru")
-        .args(["domains", "list"])
+        .args(["domains", "list", "1"])
         .assert()
         .code(1)
         .stderr(predicate::str::contains("не найден токен"));

@@ -7,11 +7,8 @@ use crate::i18n::{self, M};
 use anyhow::{Context, Result};
 use reqwest::multipart::Form;
 use reqwest::{Method, RequestBuilder};
-use serde::de::DeserializeOwned;
 use serde::Serialize;
-use serde_json::Value;
 
-#[derive(Clone)]
 pub struct Client {
     http: reqwest::Client,
     base: String,
@@ -19,50 +16,75 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn new(api_url: &str, token: &str) -> Result<Self> {
+    pub fn new(mut api_url: String, token: String) -> Result<Self> {
         let http = reqwest::Client::builder()
             .user_agent(concat!("webshield-cli/", env!("CARGO_PKG_VERSION")))
             .build()
             .context("failed to build the HTTP client")?;
+        while api_url.ends_with('/') {
+            api_url.truncate(api_url.len() - 1);
+        }
         Ok(Self {
             http,
-            base: api_url.trim_end_matches('/').to_string(),
-            token: token.to_string(),
+            base: api_url,
+            token,
         })
     }
 
-    fn url(&self, path: &str) -> String {
-        format!("{}/api/v1/{}", self.base, path.trim_start_matches('/'))
+    fn url(&self, path: impl AsRef<str>) -> String {
+        format!(
+            "{}/api/v1/{}",
+            self.base,
+            path.as_ref().trim_start_matches('/')
+        )
     }
 
-    fn request(&self, method: Method, path: &str) -> RequestBuilder {
+    fn request(&self, method: Method, path: impl AsRef<str>) -> RequestBuilder {
         self.http
             .request(method, self.url(path))
             .bearer_auth(&self.token)
     }
 
-    fn n_make_request<R: RequestDesc>(&self, params: R::Params) -> RequestBuilder {
-        self.request(R::method(), R::get_url(params).as_ref())
+    fn make_request<R: RequestDesc>(&self, params: R::Params) -> RequestBuilder {
+        self.request(R::method(), R::get_url(params))
     }
 
-    pub async fn n_send<R: RequestDesc<Request = ()>>(
+    async fn send_data<R: RequestDesc>(&self, rb: RequestBuilder) -> Result<R::Response> {
+        let resp = rb.send().await.context(i18n::tr(M::ErrNetwork))?;
+        let resp = check_status(resp).await?;
+
+        // A bit of a hack
+        let dt: R::Response = {
+            let full = resp.bytes().await.context(i18n::tr(M::ErrNetwork))?;
+
+            if full.is_empty() {
+                serde_json::from_slice(b"null")
+            } else {
+                serde_json::from_slice(&full)
+            }
+        }
+        .context(i18n::tr(M::ErrParse))?;
+
+        Ok(dt)
+    }
+
+    pub async fn send<R: RequestDesc<Request = ()>>(
         &self,
         params: R::Params,
     ) -> Result<R::Response> {
-        self.n_send_json::<R>(self.n_make_request::<R>(params))
-            .await
+        self.send_data::<R>(self.make_request::<R>(params)).await
     }
 
-    pub async fn n_send_multipart<R: RequestDesc<Request = Form>>(
+    pub async fn send_multipart<R: RequestDesc<Request = Form>>(
         &self,
         params: R::Params,
         form: Form,
     ) -> Result<R::Response> {
-        self.n_send_json::<R>(self.n_make_request::<R>(params).multipart(form))
+        self.send_data::<R>(self.make_request::<R>(params).multipart(form))
             .await
     }
 
-    pub async fn n_send_ser<R: RequestDesc>(
+    pub async fn send_json<R: RequestDesc>(
         &self,
         req: R::Request,
         params: R::Params,
@@ -70,41 +92,8 @@ impl Client {
     where
         R::Request: Serialize,
     {
-        self.n_send_json::<R>(self.n_make_request::<R>(params).json(&req))
+        self.send_data::<R>(self.make_request::<R>(params).json(&req))
             .await
-    }
-
-    async fn n_send_json<R: RequestDesc>(&self, rb: RequestBuilder) -> Result<R::Response> {
-        let resp = rb.send().await.context(i18n::tr(M::ErrNetwork))?;
-        let resp = check_status(resp).await?;
-        let dt: R::Response = resp.json().await.context(i18n::tr(M::ErrReadBody))?;
-        Ok(dt)
-    }
-
-    pub async fn post_json<B: Serialize, T: DeserializeOwned>(
-        &self,
-        path: &str,
-        body: &B,
-    ) -> Result<T> {
-        self.send_json(self.request(Method::POST, path).json(body))
-            .await
-    }
-
-    /// Sends a request and deserializes the JSON body. Empty body (204) → `null`.
-    async fn send_json<T: DeserializeOwned>(&self, rb: RequestBuilder) -> Result<T> {
-        let value = self.send_value(rb).await?;
-        serde_json::from_value(value).context(i18n::tr(M::ErrParse))
-    }
-
-    /// Sends a request and returns raw JSON (or `Null` for an empty body).
-    async fn send_value(&self, rb: RequestBuilder) -> Result<Value> {
-        let resp = rb.send().await.context(i18n::tr(M::ErrNetwork))?;
-        let resp = check_status(resp).await?;
-        let text = resp.text().await.context(i18n::tr(M::ErrReadBody))?;
-        if text.trim().is_empty() {
-            return Ok(Value::Null);
-        }
-        serde_json::from_str(&text).context(i18n::tr(M::ErrParse))
     }
 }
 
@@ -116,18 +105,8 @@ mod tests {
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn client(base: &str) -> Client {
-        Client::new(base, "wsk_test").unwrap()
+        Client::new(base.into(), "wsk_test".into()).unwrap()
     }
-
-    // struct Things;
-    // impl ListRequestDesc for Things {
-    //     type Params = ();
-    //     type Item = Value;
-    //
-    //     fn get_url(_: ()) -> impl AsRef<str> {
-    //         "things"
-    //     }
-    // }
 
     struct ThingDisable;
     impl RequestDesc for ThingDisable {
@@ -207,7 +186,7 @@ mod tests {
             .await;
 
         client(&server.uri())
-            .n_send::<ThingDisable>(())
+            .send::<ThingDisable>(())
             .await
             .unwrap();
     }
@@ -223,7 +202,7 @@ mod tests {
             .await;
 
         client(&server.uri())
-            .n_send::<ThingDisable>(())
+            .send::<ThingDisable>(())
             .await
             .unwrap();
     }
@@ -250,25 +229,4 @@ mod tests {
     //     let http = err.downcast_ref::<HttpError>().expect("HttpError in chain");
     //     assert_eq!(http.status.as_u16(), 401);
     // }
-
-    #[tokio::test]
-    async fn error_400_joins_serializer_field_errors() {
-        let server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(path("/api/v1/domains"))
-            .respond_with(
-                ResponseTemplate::new(400)
-                    .set_body_json(json!({"name": ["This field is required."]})),
-            )
-            .mount(&server)
-            .await;
-
-        let err = client(&server.uri())
-            .post_json::<_, Value>("domains", &json!({}))
-            .await
-            .unwrap_err();
-        let msg = format!("{err:#}");
-        assert!(msg.contains("400"), "got: {msg}");
-        assert!(msg.contains("name: This field is required."), "got: {msg}");
-    }
 }

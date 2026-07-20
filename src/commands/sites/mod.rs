@@ -16,6 +16,7 @@ use crate::api::models::sites::{
 use crate::api::table::ProgramRes;
 use crate::api::Client;
 use crate::commands::domains::resolve_domain;
+use crate::commands::util::Page;
 use crate::i18n::{self, M};
 use crate::util::output::{info, success};
 use crate::Context;
@@ -39,10 +40,7 @@ const HASH_CONCURRENCY: usize = 8;
 #[derive(Subcommand)]
 pub enum SitesCommand {
     /// List static sites.
-    List {
-        #[arg(value_name = "PAGE(1..n)")]
-        page: u32,
-    },
+    List(Page),
     /// Create a static site on a host.
     Create {
         /// Site hostname (e.g. www.example.com).
@@ -83,9 +81,9 @@ pub enum SitesCommand {
 }
 
 pub async fn run(ctx: &Context, cmd: SitesCommand) -> Result<ProgramRes> {
-    let client = ctx.client()?;
+    let client = ctx.new_client()?;
     match cmd {
-        SitesCommand::List { page } => list(&client, page).await.map(ProgramRes::from),
+        SitesCommand::List(page) => list(&client, page.into()).await.map(ProgramRes::from),
         SitesCommand::Create { hostname, domain } => create(&client, &hostname, &domain)
             .await
             .map(ProgramRes::from),
@@ -118,7 +116,7 @@ pub async fn run(ctx: &Context, cmd: SitesCommand) -> Result<ProgramRes> {
         SitesCommand::Files { hostname } => files(&client, hostname).await.map(ProgramRes::from),
         SitesCommand::Disable { hostname } => {
             let site = resolve_site(&client, hostname).await?;
-            client.n_send::<SiteDisable>(site.id).await?;
+            client.send::<SiteDisable>(site.id).await?;
             success(i18n::f(M::SiteDisabled, &[("host", &site.hostname)]));
             Ok(ProgramRes::Idle)
         }
@@ -128,7 +126,7 @@ pub async fn run(ctx: &Context, cmd: SitesCommand) -> Result<ProgramRes> {
 async fn resolve_site(client: &Client, hostname: String) -> Result<SitesListInner> {
     let needle = hostname.trim().to_lowercase();
 
-    let sites = client.n_send::<SitesResolve>(needle).await?;
+    let sites = client.send::<SitesResolve>(needle).await?;
 
     sites
         .results
@@ -138,13 +136,13 @@ async fn resolve_site(client: &Client, hostname: String) -> Result<SitesListInne
 }
 
 async fn list(client: &Client, page: u32) -> Result<SitesList> {
-    client.n_send::<Sites>(page).await
+    client.send::<Sites>(page).await
 }
 
 async fn create(client: &Client, hostname: &str, domain: &str) -> Result<SitesListInner> {
     let d = resolve_domain(client, domain).await?;
     let site: SitesListInner = client
-        .n_send_ser::<SiteAdd>(
+        .send_json::<SiteAdd>(
             SiteAddReq {
                 hostname: hostname.to_string(),
                 domain_id: d.id,
@@ -159,7 +157,7 @@ async fn create(client: &Client, hostname: &str, domain: &str) -> Result<SitesLi
 async fn files(client: &Client, hostname: String) -> Result<FilesResponseSite> {
     let site = resolve_site(client, hostname).await?;
 
-    let resp: FilesResponseSite = client.n_send::<SiteFiles>(site.id).await?;
+    let resp: FilesResponseSite = client.send::<SiteFiles>(site.id).await?;
 
     Ok(resp)
 }
@@ -178,7 +176,7 @@ async fn publish_from_bucket(
 ) -> Result<()> {
     // Kick off the async publish (202 → status "publishing").
     client
-        .n_send_ser::<SitePublishFromBucket>(
+        .send_json::<SitePublishFromBucket>(
             SitePublishBucketReq {
                 bucket: bucket.to_string(),
                 path: path.to_string(),
@@ -195,7 +193,7 @@ async fn publish_from_bucket(
     // Poll until the site leaves the transient "publishing" status.
     for _ in 0..BUCKET_POLL_MAX_ATTEMPTS {
         tokio::time::sleep(std::time::Duration::from_secs(BUCKET_POLL_INTERVAL_SECS)).await;
-        let site: SitesListInner = client.n_send::<SiteGet>(site_id).await?;
+        let site: SitesListInner = client.send::<SiteGet>(site_id).await?;
         match site.status.as_deref() {
             Some("publishing") => continue,
             Some("active") => {
@@ -230,7 +228,7 @@ async fn publish(client: &Client, site_id: i64, dir: &Path, dry_run: bool) -> Re
         ));
     }
 
-    let resp = client.n_send::<SiteFiles>(site_id).await?;
+    let resp = client.send::<SiteFiles>(site_id).await?;
 
     // 1. Current draft state on the server: path -> etag.
     let server: HashMap<String, String> = resp
@@ -291,7 +289,7 @@ async fn publish(client: &Client, site_id: i64, dir: &Path, dry_run: bool) -> Re
         delete_all(client, site_id, &to_delete).await?;
     }
     // 6. Publish the snapshot.
-    client.n_send::<SitePublish>(site_id).await?;
+    client.send::<SitePublish>(site_id).await?;
     success(i18n::tr(M::Published));
     Ok(())
 }
@@ -373,11 +371,11 @@ async fn upload_all(client: &Client, site_id: i64, files: Vec<(String, PathBuf)>
     bar.set_style(ProgressStyle::with_template(i18n::tr(M::UploadBar))?.progress_chars("=>-"));
 
     let results = stream::iter(batches.into_iter().map(|batch| {
-        let client = client.clone();
+        // let client = client.clone();
         let bar = bar.clone();
         async move {
             let n = batch.len() as u64;
-            upload_batch(&client, site_id, batch).await?;
+            upload_batch(client, site_id, batch).await?;
             bar.inc(n);
             Ok::<_, anyhow::Error>(())
         }
@@ -409,7 +407,7 @@ async fn upload_batch(client: &Client, site_id: i64, batch: Vec<(String, PathBuf
         form = form.part("files", part);
     }
     client
-        .n_send_multipart::<SiteFilesUploadBatch>(site_id, form)
+        .send_multipart::<SiteFilesUploadBatch>(site_id, form)
         .await?;
     Ok(())
 }
@@ -417,7 +415,7 @@ async fn upload_batch(client: &Client, site_id: i64, batch: Vec<(String, PathBuf
 async fn delete_all(client: &Client, site_id: i64, paths: &[String]) -> Result<()> {
     for chunk in paths.chunks(DELETE_BATCH) {
         client
-            .n_send_ser::<SiteFilesDeleteBatch>(
+            .send_json::<SiteFilesDeleteBatch>(
                 SiteFilesPaths {
                     paths: chunk.to_owned(),
                 },
@@ -493,7 +491,7 @@ mod tests {
     }
 
     fn client(server: &MockServer) -> Client {
-        Client::new(&server.uri(), "wsk_test").unwrap()
+        Client::new(server.uri(), "wsk_test".into()).unwrap()
     }
 
     /// Mounts `GET files` returning the given draft state.

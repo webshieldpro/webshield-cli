@@ -120,7 +120,7 @@ impl Context {
     }
 
     /// Builds the HTTP client, resolving URL and token from flags/env/profile.
-    pub fn client(&self) -> Result<Client> {
+    pub fn new_client(&self) -> Result<Client> {
         let cfg = Config::load()?;
         let profile_name = cfg.active_profile_name(self.profile.as_deref());
         let profile = cfg.profile(&profile_name);
@@ -139,7 +139,7 @@ impl Context {
         let Some(token) = token else {
             bail!(i18n::f(i18n::M::NoToken, &[("profile", &profile_name)]));
         };
-        Client::new(&api_url, &token)
+        Client::new(api_url, token)
     }
 }
 
@@ -170,6 +170,8 @@ async fn run() -> Result<()> {
         output: cli.output,
         yes: cli.yes,
     };
+
+    // ctx.new_client().clone();
 
     let result: Result<ProgramRes> = match cli.command {
         Command::Auth(cmd) => commands::auth::run(&ctx, cmd).await,

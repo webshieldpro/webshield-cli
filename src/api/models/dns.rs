@@ -4,32 +4,41 @@ use crate::i18n;
 use crate::i18n::M;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
+use std::marker::PhantomData;
 
 #[derive(Serialize, Deserialize)]
-pub struct RecordItem {
-    pub content: String,
+pub struct RecordItem<'a> {
+    pub content: Cow<'a, str>,
     #[serde(default)]
     pub disabled: bool,
 }
 
+#[derive(Serialize, Deserialize)]
+pub(crate) enum ChangeType {
+    DELETE,
+}
 /// A set of records sharing one name and type (rrset).
 #[derive(Serialize, Deserialize)]
-pub struct RRSet {
-    pub name: String,
+pub struct RRSet<'a> {
+    pub name: Cow<'a, str>,
     #[serde(rename = "type")]
-    pub rr_type: String,
+    pub rr_type: Cow<'a, str>,
     #[serde(default)]
     pub ttl: Option<i64>,
     #[serde(default)]
-    pub records: Vec<RecordItem>,
-    /// Proxying flag (for A/AAAA/CNAME).
+    pub records: Vec<RecordItem<'a>>,
+    // /// Proxying flag (for A/AAAA/CNAME).
     #[serde(default)]
     pub proxied: bool,
+    #[serde(rename = "changetype")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub change_type: Option<ChangeType>,
 }
 #[derive(Serialize, Deserialize)]
-pub struct RecordsResp {
+pub struct DnsRecords<'a> {
     #[serde(default)]
-    pub rrsets: Vec<RRSet>,
+    pub rrsets: Vec<RRSet<'a>>,
     #[serde(default)]
     pub records_used: Option<i64>,
     #[serde(default)]
@@ -41,7 +50,7 @@ pub struct DNSDomainRecords;
 impl RequestDesc for DNSDomainRecords {
     type Params = i64;
     type Request = ();
-    type Response = RecordsResp;
+    type Response = DnsRecords<'static>;
 
     fn get_url(domain_id: Self::Params) -> impl AsRef<str> {
         format!("domains/{domain_id}/records")
@@ -52,16 +61,31 @@ impl RequestDesc for DNSDomainRecords {
     }
 }
 
-#[derive(Serialize)]
-pub struct RRSetList(Vec<RRSet>);
+pub struct DNSDomainRecordsPost<'s>(PhantomData<&'s ()>);
 
-impl From<Vec<RRSet>> for RRSetList {
-    fn from(v: Vec<RRSet>) -> Self {
+impl<'s> RequestDesc for DNSDomainRecordsPost<'s> {
+    type Params = i64;
+    type Request = DnsRecords<'s>;
+    type Response = serde::de::IgnoredAny;
+
+    fn get_url(domain_id: Self::Params) -> impl AsRef<str> {
+        format!("domains/{domain_id}/records")
+    }
+
+    fn method() -> Method {
+        Method::POST
+    }
+}
+#[derive(Serialize)]
+pub struct RRSetList<'a>(Vec<RRSet<'a>>);
+
+impl<'a> From<Vec<RRSet<'a>>> for RRSetList<'a> {
+    fn from(v: Vec<RRSet<'a>>) -> Self {
         RRSetList(v)
     }
 }
 
-impl DisplayTable for RRSetList {
+impl<'a> DisplayTable for RRSetList<'a> {
     fn headers(&self) -> Vec<&'static str> {
         vec![
             i18n::tr(M::HName),
@@ -84,8 +108,8 @@ impl DisplayTable for RRSetList {
                     .collect::<Vec<_>>()
                     .join(", ");
                 vec![
-                    r.name.clone(),
-                    r.rr_type.clone(),
+                    r.name.to_string(),
+                    r.rr_type.to_string(),
                     r.ttl.map(|t| t.to_string()).unwrap_or_default(),
                     if r.proxied { yes.into() } else { String::new() },
                     values,

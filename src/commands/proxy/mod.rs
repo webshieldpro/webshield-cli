@@ -7,6 +7,7 @@ use crate::api::models::proxy::{
 use crate::api::table::ProgramRes;
 use crate::api::Client;
 use crate::commands::domains::resolve_domain;
+use crate::commands::util::Page;
 use crate::i18n::{self, M};
 use crate::util::input::confirm;
 use crate::Context;
@@ -27,10 +28,7 @@ pub struct SetImpl {
 #[derive(Subcommand)]
 pub enum ProxyCommand {
     /// List proxy/redirect host configs.
-    List {
-        #[arg(value_name = "PAGE(1..n)")]
-        page: u32,
-    },
+    List(Page),
     /// Show a host config.
     Get { hostname: String },
     /// Create or update a host config (partial update if it exists).
@@ -40,9 +38,9 @@ pub enum ProxyCommand {
 }
 
 pub async fn run(ctx: &Context, cmd: ProxyCommand) -> Result<ProgramRes> {
-    let client = ctx.client()?;
+    let client = ctx.new_client()?;
     match cmd {
-        ProxyCommand::List { page } => list(&client, page).await.map(ProgramRes::from),
+        ProxyCommand::List(page) => list(&client, page.into()).await.map(ProgramRes::from),
         ProxyCommand::Get { hostname } => resolve_proxy(&client, &hostname)
             .await
             .map(ProgramRes::from),
@@ -56,7 +54,7 @@ pub async fn run(ctx: &Context, cmd: ProxyCommand) -> Result<ProgramRes> {
                 &i18n::f(M::ConfirmRemoveProxy, &[("host", &hostname)]),
             )?;
 
-            client.n_send::<ProxyDelete>(cfg.id).await?;
+            client.send::<ProxyDelete>(cfg.id).await?;
             Ok(ProgramRes::from(i18n::f(
                 M::ProxyRemoved,
                 &[("host", &hostname)],
@@ -66,7 +64,7 @@ pub async fn run(ctx: &Context, cmd: ProxyCommand) -> Result<ProgramRes> {
 }
 
 async fn _find_config(client: &Client, hostname: String) -> Result<ProxyData> {
-    let config = client.n_send::<ProxyResolve>(hostname.clone()).await?;
+    let config = client.send::<ProxyResolve>(hostname.clone()).await?;
 
     config
         .results
@@ -81,7 +79,7 @@ async fn resolve_proxy(client: &Client, hostname: &str) -> Result<ProxyData> {
 }
 
 async fn list(client: &Client, page: u32) -> Result<Proxies> {
-    client.n_send::<Proxy>(page).await
+    client.send::<Proxy>(page).await
 }
 
 /// Upsert: PATCH when the config already exists, otherwise POST (domain required).
@@ -91,13 +89,13 @@ async fn set(client: &Client, set: SetImpl) -> Result<String> {
 
     let res = if let Some(cfg) = existing {
         // Partial update of an existing config.
-        client.n_send_ser::<ProxyPatch>(set.info, cfg.id).await?;
+        client.send_json::<ProxyPatch>(set.info, cfg.id).await?;
         i18n::f(M::ProxyUpdated, &[("host", &hostname)])
     } else {
         let d = resolve_domain(client, &set.domain).await?;
 
         client
-            .n_send_ser::<ProxyNew>(
+            .send_json::<ProxyNew>(
                 ProxyDecl {
                     hostname: hostname.clone(),
                     domain_id: d.id,

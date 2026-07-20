@@ -26,7 +26,7 @@ pub enum StatsCommand {
 }
 
 pub async fn run(ctx: &Context, cmd: StatsCommand) -> Result<ProgramRes> {
-    let client = ctx.client()?;
+    let client = ctx.new_client()?;
     match cmd {
         StatsCommand::Summary { domain, range } => summary(&client, &domain, &range)
             .await
@@ -41,7 +41,7 @@ async fn summary(client: &Client, domain: &str, range: &str) -> Result<SummarySt
     let d = resolve_domain(client, domain).await?;
     // The summary is complex (charts and aggregates) — print it as JSON.
     let payload: SummaryStats = client
-        .n_send::<StatDomains>((d.id, range.to_string()))
+        .send::<StatDomains>((d.id, range.to_string()))
         .await?;
     Ok(payload)
 }
@@ -49,7 +49,7 @@ async fn summary(client: &Client, domain: &str, range: &str) -> Result<SummarySt
 async fn bans(client: &Client, domain: &str, range: &str) -> Result<BanStats> {
     let d = resolve_domain(client, domain).await?;
 
-    let payload: BanStats = client.n_send::<StatBans>((d.id, range.to_string())).await?;
+    let payload: BanStats = client.send::<StatBans>((d.id, range.to_string())).await?;
 
     Ok(payload)
 }

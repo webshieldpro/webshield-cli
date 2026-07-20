@@ -111,8 +111,8 @@ async fn status(ctx: &Context) -> Result<()> {
     if !has_token {
         info(i18n::tr(M::LoginHint));
     } else {
-        let client = ctx.client()?;
-        let resp = client.n_send::<Billing>(()).await; // Any route
+        let client = ctx.new_client()?;
+        let resp = client.send::<Billing>(()).await; // Any route
 
         let verdict = match resp {
             Ok(_) => style(i18n::tr(M::AccessOk).to_string()).green(),

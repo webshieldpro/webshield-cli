@@ -7,3 +7,4 @@ pub mod domains;
 pub mod proxy;
 pub mod sites;
 pub mod stats;
+mod util;

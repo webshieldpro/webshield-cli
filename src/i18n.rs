@@ -192,7 +192,7 @@ pub enum M {
     NoBans,
     // client errors
     ErrNetwork,
-    ErrReadBody,
+    // ErrReadBody,
     ErrParse,
     ErrUnauthorized,
     ErrForbidden,
@@ -437,15 +437,15 @@ impl M {
 
             ErrNetwork => ("network error while calling the API", "ошибка сети при запросе к API"),
             ErrReadBody => ("failed to read the response body", "не удалось прочитать тело ответа"),
-            ErrParse => ("failed to parse the API response", "не удалось разобрать ответ API"),
-            ErrUnauthorized => (
-                "check the token (`webshield auth status`).",
-                "Проверьте токен (`webshield auth status`).",
-            ),
-            ErrForbidden => (
-                "the token may lack the required scope or be bound to another domain/site.",
-                "Возможно, у токена нет нужного скоупа или он привязан к другому домену/сайту.",
-            ),
+            // ErrParse => ("failed to parse the API response", "не удалось разобрать ответ API"),
+            // ErrUnauthorized => (
+            //     "check the token (`webshield auth status`).",
+            //     "Проверьте токен (`webshield auth status`).",
+            // ),
+            // ErrForbidden => (
+            //     "the token may lack the required scope or be bound to another domain/site.",
+            //     "Возможно, у токена нет нужного скоупа или он привязан к другому домену/сайту.",
+            // ),
         }
     }
 }
