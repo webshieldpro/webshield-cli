@@ -3,17 +3,17 @@ use clap::ValueEnum;
 #[derive(ValueEnum, Clone)]
 #[clap(rename_all = "uppercase")]
 pub enum RrType {
-    CNAME,
+    Cname,
     A,
-    AAAA,
+    Aaaa,
 }
 
 impl RrType {
     pub fn as_str(&self) -> &'static str {
         match self {
-            RrType::CNAME => "CNAME",
-            RrType::A => "A",
-            RrType::AAAA => "AAAA",
+            Self::Cname => "CNAME",
+            Self::A => "A",
+            Self::Aaaa => "AAAA",
         }
     }
 
@@ -23,8 +23,8 @@ impl RrType {
             return v.to_string();
         }
         match self {
-            Self::CNAME => ensure_trailing_dot(v),
-            Self::A | Self::AAAA => v.to_string(),
+            Self::Cname => ensure_trailing_dot(v),
+            Self::A | Self::Aaaa => v.to_string(),
         }
     }
 }

@@ -11,10 +11,12 @@ use std::sync::OnceLock;
 
 use clap::builder::Command;
 use clap::ValueEnum;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[derive(Debug, Clone, Copy, ValueEnum, Default,  Serialize, Deserialize)]
 pub enum Lang {
     /// English
+    #[default]
     En,
     /// Russian (русский)
     Ru,
@@ -27,7 +29,7 @@ pub fn set(lang: Lang) {
 }
 
 pub fn get() -> Lang {
-    *LANG.get().unwrap_or(&Lang::En)
+    *LANG.get().unwrap()
 }
 
 fn parse(v: &str) -> Option<Lang> {
@@ -473,12 +475,12 @@ pub fn f(m: M, args: &[(&str, &str)]) -> String {
 /// structural words (`Usage:`/`Commands:`/`Options:`/`[possible values]`/`[default]`/`[env]`)
 /// are not localized — clap does not expose them for i18n; all descriptions are.
 pub fn localize_help(mut cmd: Command) -> Command {
-    if get() != Lang::Ru {
-        return cmd; // the base (doc comments) is English
-    }
-    // Materialize the auto arguments (`help`/`version`) and the auto `help` subcommand,
-    // otherwise the recursion will not see them — they are absent from the tree before build().
-    cmd.build();
+    // if get() != Lang::Ru {
+    //     return cmd; // the base (doc comments) is English
+    // }
+    // // Materialize the auto arguments (`help`/`version`) and the auto `help` subcommand,
+    // // otherwise the recursion will not see them — they are absent from the tree before build().
+    // cmd.build();
     localize_cmd(cmd, "")
 }
 
@@ -488,7 +490,7 @@ fn localize_cmd(mut cmd: Command, parent: &str) -> Command {
     let rel = if parent.is_empty() {
         String::new() // root (webshield)
     } else if parent == "\0" {
-        name.clone()
+        name
     } else {
         format!("{parent} {name}")
     };

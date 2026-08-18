@@ -55,16 +55,6 @@ async fn login(ctx: &Context, token: Option<String>, api_url: String) -> Result<
 
     let mut cfg = Config::load()?;
     let name = cfg.active_profile_name(ctx.profile_name());
-    let profile = cfg
-        .profiles
-        .entry(name.clone())
-        .or_insert_with(Profile::default);
-    profile.api_url = api_url.clone();
-    profile.token = Some(token.clone());
-    if cfg.default_profile.is_none() {
-        cfg.default_profile = Some(name.clone());
-    }
-    cfg.save()?;
 
     match probe(&api_url, &token).await {
         Ok(code) if code.is_success() => success(i18n::f(M::TokenSavedOk, &[("profile", &name)])),
@@ -80,6 +70,20 @@ async fn login(ctx: &Context, token: Option<String>, api_url: String) -> Result<
             &[("err", &err.to_string())],
         )),
     }
+
+
+
+    let profile = cfg
+        .profiles
+        .entry(name.clone())
+        .or_insert_with(Profile::default);
+    profile.api_url = Some(api_url);
+    profile.token = Some(token.clone());
+    if cfg.default_profile.is_none() {
+        cfg.default_profile = Some(name.clone());
+    }
+    cfg.save()?;
+
     Ok(())
 }
 
@@ -90,7 +94,7 @@ async fn status(ctx: &Context) -> Result<()> {
     let api_url = ctx
         .api_url_override()
         .map(str::to_string)
-        .or_else(|| profile.map(|p| p.api_url.clone()))
+        .or_else(|| profile.and_then(|p| p.api_url.clone()))
         .unwrap_or_else(|| DEFAULT_API_URL.to_string());
     let has_token = ctx.has_token() || profile.and_then(|p| p.token.as_ref()).is_some();
 

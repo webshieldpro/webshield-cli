@@ -214,7 +214,7 @@ fn dns_req_del<'a>(name: &'a str, ty: &'a str, stale: Vec<String>) -> RRSet<'a> 
         rr_type: Cow::Borrowed(ty),
         records: content(stale),
         ttl: None,
-        change_type: Some(ChangeType::DELETE),
+        change_type: Some(ChangeType::Delete),
         proxied: false,
     }
 }
@@ -267,7 +267,6 @@ async fn change(
                 .collect();
             if !stale.is_empty() {
                 let del = dns_req_del(&name, &ty, stale);
-
                 post_rrset(client, d.id, del).await?;
             }
             let l = values.len();

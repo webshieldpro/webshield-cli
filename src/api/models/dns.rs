@@ -16,7 +16,8 @@ pub struct RecordItem<'a> {
 
 #[derive(Serialize, Deserialize)]
 pub(crate) enum ChangeType {
-    DELETE,
+    #[serde(rename = "DELETE")]
+    Delete,
 }
 /// A set of records sharing one name and type (rrset).
 #[derive(Serialize, Deserialize)]

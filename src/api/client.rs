@@ -6,7 +6,7 @@ use crate::api::request_desc::RequestDesc;
 use crate::i18n::{self, M};
 use anyhow::{Context, Result};
 use reqwest::multipart::Form;
-use reqwest::{Method, RequestBuilder};
+use reqwest::{IntoUrl, Method, RequestBuilder};
 use serde::Serialize;
 
 pub struct Client {
@@ -39,14 +39,14 @@ impl Client {
         )
     }
 
-    fn request(&self, method: Method, path: impl AsRef<str>) -> RequestBuilder {
+    fn request(&self, method: Method, full_path: impl IntoUrl) -> RequestBuilder {
         self.http
-            .request(method, self.url(path))
+            .request(method, full_path)
             .bearer_auth(&self.token)
     }
 
     fn make_request<R: RequestDesc>(&self, params: R::Params) -> RequestBuilder {
-        self.request(R::method(), R::get_url(params))
+        self.request(R::method(), self.url(R::get_url(params)))
     }
 
     async fn send_data<R: RequestDesc>(&self, rb: RequestBuilder) -> Result<R::Response> {

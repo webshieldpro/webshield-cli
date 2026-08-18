@@ -336,7 +336,7 @@ async fn scan_local(root: &Path) -> Result<HashMap<String, (PathBuf, String)>> {
     .collect::<Vec<Result<_>>>()
     .await;
 
-    let mut map = HashMap::new();
+    let mut map = HashMap::with_capacity(hashed.len());
     for item in hashed {
         let (rel, meta) = item?;
         map.insert(rel, meta);

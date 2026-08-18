@@ -8,15 +8,20 @@ mod config;
 mod i18n;
 mod util;
 
+use crate::i18n::locale::{set_locale, LOCALE};
 use anyhow::{bail, Result};
 use clap::{CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
 use clap_complete_nushell::Nushell;
+use std::time::SystemTime;
 
 use crate::api::table::ProgramRes;
 use api::Client;
-use config::Config;
-use i18n::Lang;
+// use config::Config;
+
+use crate::i18n::locale::{load_locale, LocaleCode};
+// use crate::i18n::Lang;
+use crate::config::Config;
 use util::output::OutputFormat;
 
 #[derive(Parser)]
@@ -39,9 +44,9 @@ struct Cli {
     #[arg(long, global = true, env = "WS_TOKEN", hide_env_values = true)]
     token: Option<String>,
 
-    /// Interface language (en/ru); defaults to WS_LANG or system locale.
+    /// Interface language.
     #[arg(long, global = true, value_enum)]
-    lang: Option<Lang>,
+    lang: Option<LocaleCode>,
 
     /// Output format.
     #[arg(long, short = 'o', global = true, value_enum, default_value_t = OutputFormat::Table)]
@@ -59,26 +64,34 @@ struct Cli {
 enum Command {
     /// Authentication and profiles.
     #[command(subcommand)]
+    #[command(about = t!(cmd_auth))]
     Auth(commands::auth::AuthCommand),
     /// Domains (zones).
     #[command(subcommand)]
+    #[command(about = t!(cmd_domains))]
     Domains(commands::domains::DomainsCommand),
     /// DNS records.
     #[command(subcommand)]
+    #[command(about = t!(cmd_dns))]
     Dns(commands::dns::DnsCommand),
     /// Static sites and publishing.
     #[command(subcommand)]
+    #[command(about = t!(cmd_sites))]
     Sites(commands::sites::SitesCommand),
     /// Proxy/redirect host edge settings.
     #[command(subcommand)]
+    #[command(about = t!(cmd_proxy))]
     Proxy(commands::proxy::ProxyCommand),
     /// Statistics and protection.
     #[command(subcommand)]
+    #[command(about = t!(cmd_stats))]
     Stats(commands::stats::StatsCommand),
     /// Billing: balance, usage, tariffs.
     #[command(subcommand)]
+    #[command(about = t!(cmd_billing))]
     Billing(commands::billing::BillingCommand),
     /// Generate a shell completion script.
+    #[command(about = t!(cmd_completion))]
     Completion {
         /// Shell: bash, zsh, fish, powershell, elvish, nushell.
         shell: CompletionShell,
@@ -120,48 +133,56 @@ impl Context {
     }
 
     /// Builds the HTTP client, resolving URL and token from flags/env/profile.
+    // pub fn new_client(&self) -> Result<Client> {
+    //     let cfg = Config::load()?;
+    //     let profile_name = cfg.active_profile_name(self.profile.as_deref());
+    //     let profile = cfg.profile(&profile_name);
+    //
+    //     let api_url = self
+    //         .api_url
+    //         .clone()
+    //         .or_else(|| profile.map(|p| p.api_url.clone()))
+    //         .unwrap_or_else(|| config::DEFAULT_API_URL.to_string());
+    //
+    //     let token = self
+    //         .token
+    //         .clone()
+    //         .or_else(|| profile.and_then(|p| p.token.clone()));
+    //
+    //     let Some(token) = token else {
+    //         bail!(i18n::f(i18n::M::NoToken, &[("profile", &profile_name)]));
+    //     };
+    //     Client::new(api_url, token)
+    // }
+
     pub fn new_client(&self) -> Result<Client> {
-        let cfg = Config::load()?;
-        let profile_name = cfg.active_profile_name(self.profile.as_deref());
-        let profile = cfg.profile(&profile_name);
-
-        let api_url = self
-            .api_url
-            .clone()
-            .or_else(|| profile.map(|p| p.api_url.clone()))
-            .unwrap_or_else(|| config::DEFAULT_API_URL.to_string());
-
-        let token = self
-            .token
-            .clone()
-            .or_else(|| profile.and_then(|p| p.token.clone()));
-
-        let Some(token) = token else {
-            bail!(i18n::f(i18n::M::NoToken, &[("profile", &profile_name)]));
-        };
-        Client::new(api_url, token)
+        Client::new("".into(), "".into())
     }
 }
 
 #[tokio::main]
-async fn main() {
-    // The language is needed before parsing so that help prints in the right language.
-    let raw: Vec<String> = std::env::args().collect();
-    i18n::set(i18n::resolve(i18n::prescan_lang(&raw).as_deref()));
+async fn main() -> Result<()> {
+    
+    set_locale(LocaleCode::En);
 
     if let Err(err) = run().await {
         eprintln!(
-            "{} {err:#}",
-            console::style(i18n::tr(i18n::M::ErrorPrefix)).red().bold()
+            "{{}} {err:#}",
+            // Todo
+            // console::style(i18n::tr(i18n::M::ErrorPrefix)).red().bold()
         );
         std::process::exit(1);
     }
+
+    Ok(())
 }
 
 async fn run() -> Result<()> {
-    let cmd = i18n::localize_help(Cli::command());
-    let matches = cmd.get_matches();
-    let cli = Cli::from_arg_matches(&matches)?;
+    // let cmd = i18n::localize_help(Cli::command());
+    // let matches = cmd.get_matches();
+    // let cli = Cli::from_arg_matches(&matches)?;
+
+    let cli = Cli::parse();
 
     let ctx = Context {
         profile: cli.profile,
@@ -171,6 +192,7 @@ async fn run() -> Result<()> {
         yes: cli.yes,
     };
 
+    println!("{:?}", cli.lang);
     // ctx.new_client().clone();
 
     let result: Result<ProgramRes> = match cli.command {
@@ -221,6 +243,7 @@ async fn run() -> Result<()> {
         }
         ProgramRes::Idle => {}
     }
+
     Ok(())
 }
 
