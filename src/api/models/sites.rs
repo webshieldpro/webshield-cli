@@ -2,8 +2,7 @@
 
 use crate::api::request_desc::RequestDesc;
 use crate::api::table::DisplayTable;
-use crate::i18n;
-use crate::i18n::M;
+use crate::t;
 use crate::util::output::success;
 use reqwest::multipart::Form;
 use reqwest::Method;
@@ -41,10 +40,7 @@ impl DisplayTable for SitesListInner {
     }
 
     fn display_as_table(&self) {
-        success(i18n::f(
-            M::SiteCreated,
-            &[("host", &self.hostname), ("id", &self.id.to_string())],
-        ));
+        success(t!(site_created, &self.hostname, &self.id.to_string()));
     }
 }
 
@@ -70,12 +66,12 @@ pub struct SitesList {
 impl DisplayTable for SitesList {
     fn headers(&self) -> Vec<&'static str> {
         vec![
-            i18n::tr(M::HId),
-            i18n::tr(M::HHost),
-            i18n::tr(M::HDomain),
-            i18n::tr(M::HStatus),
-            i18n::tr(M::HVersion),
-            i18n::tr(M::HSize),
+            t!(h_id),
+            t!(h_host),
+            t!(h_domain),
+            t!(h_status),
+            t!(h_version),
+            t!(h_size),
         ]
     }
 
@@ -141,7 +137,7 @@ pub struct SiteFiles;
 
 impl DisplayTable for FilesResponseSite {
     fn headers(&self) -> Vec<&'static str> {
-        vec![i18n::tr(M::HPath), i18n::tr(M::HEtag)]
+        vec![t!(h_path), t!(h_etag)]
     }
 
     fn rows(&self) -> Vec<Vec<String>> {

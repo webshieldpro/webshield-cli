@@ -4,23 +4,25 @@ use crate::api::models::stats::{BanStats, StatBans, StatDomains, SummaryStats};
 use crate::api::table::ProgramRes;
 use crate::api::Client;
 use crate::commands::domains::resolve_domain;
+use crate::t;
 use crate::Context;
 use anyhow::Result;
 use clap::Subcommand;
 
 #[derive(Subcommand)]
 pub enum StatsCommand {
-    /// Traffic/requests summary of a domain.
+    #[command(about = t!(cmd_stats_summary))]
     Summary {
+        #[arg(help = t!(arg_domain))]
         domain: String,
-        /// Time range, e.g. 24h, 7d.
-        #[arg(long, default_value = "24h")]
+        #[arg(long, default_value = "24h", help = t!(arg_range))]
         range: String,
     },
-    /// Active bans/challenges for a domain.
+    #[command(about = t!(cmd_stats_bans))]
     Bans {
+        #[arg(help = t!(arg_domain))]
         domain: String,
-        #[arg(long, default_value = "24h")]
+        #[arg(long, default_value = "24h", help = t!(arg_range))]
         range: String,
     },
 }

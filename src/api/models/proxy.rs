@@ -1,7 +1,6 @@
 use crate::api::request_desc::RequestDesc;
 use crate::api::table::DisplayTable;
-use crate::i18n;
-use crate::i18n::M;
+use crate::t;
 use clap::Args;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
@@ -9,31 +8,31 @@ use serde_json::Value;
 
 #[derive(Serialize, Deserialize, Args, Clone)]
 pub struct ProxyInfo {
-    #[arg(long)]
+    #[arg(long, help = t!(arg_proxy_mode))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mode: Option<String>,
-    #[arg(long)]
+    #[arg(long, help = t!(arg_proxy_redirect_target))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub redirect_target: Option<String>,
-    #[arg(long)]
+    #[arg(long, help = t!(arg_proxy_ssl))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ssl: Option<bool>,
-    #[arg(long)]
+    #[arg(long, help = t!(arg_proxy_bot_protection))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bot_protection: Option<bool>,
-    #[arg(long)]
+    #[arg(long, help = t!(arg_proxy_captcha))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub captcha: Option<bool>,
-    #[arg(long)]
+    #[arg(long, help = t!(arg_proxy_http2))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub http2: Option<bool>,
-    #[arg(long)]
+    #[arg(long, help = t!(arg_proxy_http3))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub http3: Option<bool>,
-    #[arg(long)]
+    #[arg(long, help = t!(arg_proxy_max_body))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_body_mb: Option<i64>,
-    #[arg(long)]
+    #[arg(long, help = t!(arg_proxy_block_bots))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub block_bots: Option<Vec<String>>,
 }
@@ -129,17 +128,17 @@ impl From<Vec<ProxyData>> for Proxies {
 impl DisplayTable for Proxies {
     fn headers(&self) -> Vec<&'static str> {
         vec![
-            i18n::tr(M::HHost),
-            i18n::tr(M::HDomain),
-            i18n::tr(M::HMode),
-            i18n::tr(M::HTarget),
-            i18n::tr(M::HSsl),
-            i18n::tr(M::HBotProt),
+            t!(h_host),
+            t!(h_domain),
+            t!(h_mode),
+            t!(h_target),
+            t!(h_ssl),
+            t!(h_bot_prot),
         ]
     }
 
     fn rows(&self) -> Vec<Vec<String>> {
-        let yes = i18n::tr(M::Yes);
+        let yes = t!(yes);
         self.results
             .iter()
             .map(|c| {

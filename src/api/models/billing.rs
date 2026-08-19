@@ -1,7 +1,6 @@
 use crate::api::request_desc::RequestDesc;
 use crate::api::table::DisplayTable;
-use crate::i18n;
-use crate::i18n::M;
+use crate::t;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -14,7 +13,7 @@ pub struct BillingBalance {
 
 impl DisplayTable for BillingBalance {
     fn headers(&self) -> Vec<&'static str> {
-        vec![i18n::tr(M::HCurrency), i18n::tr(M::HBalance)]
+        vec![t!(h_currency), t!(h_balance)]
     }
 
     fn rows(&self) -> Vec<Vec<String>> {
@@ -65,12 +64,12 @@ fn _option_to_string<S: ToString>(s: Option<S>) -> String {
 }
 
 fn _bool_to_string(b: bool) -> String {
-    if b { i18n::tr(M::Yes) } else { i18n::tr(M::No) }.to_string()
+    if b { t!(yes) } else { t!(no) }.to_string()
 }
 
 impl DisplayTable for BillingDomainUsage {
     fn headers(&self) -> Vec<&'static str> {
-        vec![i18n::tr(M::HMetric), i18n::tr(M::HValue)]
+        vec![t!(h_metric), t!(h_value)]
     }
 
     fn rows(&self) -> Vec<Vec<String>> {

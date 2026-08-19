@@ -1,9 +1,10 @@
+use crate::t;
 use clap::Args;
 use std::num::NonZeroU32;
 
 #[derive(Args)]
 pub struct Page {
-    #[arg(value_name = "PAGE(1..n)")]
+    #[arg(value_name = "PAGE(1..n)", help = t!(arg_page))]
     page: NonZeroU32,
 }
 

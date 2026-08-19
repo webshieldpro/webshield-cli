@@ -3,7 +3,7 @@
 
 use crate::api::error::check_status;
 use crate::api::request_desc::RequestDesc;
-use crate::i18n::{self, M};
+use crate::t;
 use anyhow::{Context, Result};
 use reqwest::multipart::Form;
 use reqwest::{IntoUrl, Method, RequestBuilder};
@@ -50,12 +50,12 @@ impl Client {
     }
 
     async fn send_data<R: RequestDesc>(&self, rb: RequestBuilder) -> Result<R::Response> {
-        let resp = rb.send().await.context(i18n::tr(M::ErrNetwork))?;
+        let resp = rb.send().await.context(t!(err_network))?;
         let resp = check_status(resp).await?;
 
         // A bit of a hack
         let dt: R::Response = {
-            let full = resp.bytes().await.context(i18n::tr(M::ErrNetwork))?;
+            let full = resp.bytes().await.context(t!(err_network))?;
 
             if full.is_empty() {
                 serde_json::from_slice(b"null")
@@ -63,7 +63,7 @@ impl Client {
                 serde_json::from_slice(&full)
             }
         }
-        .context(i18n::tr(M::ErrParse))?;
+        .context(t!(err_parse))?;
 
         Ok(dt)
     }
@@ -100,12 +100,28 @@ impl Client {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
+    use crate::api::error::HttpError;
+    use serde_json::{json, Value};
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
     fn client(base: &str) -> Client {
         Client::new(base.into(), "wsk_test".into()).unwrap()
+    }
+
+    struct Things;
+    impl RequestDesc for Things {
+        type Params = ();
+        type Request = ();
+        type Response = Value;
+
+        fn get_url(_: ()) -> impl AsRef<str> {
+            "things"
+        }
+
+        fn method() -> Method {
+            Method::GET
+        }
     }
 
     struct ThingDisable;
@@ -131,50 +147,6 @@ mod tests {
         let c = client("https://example.com/");
         assert_eq!(c.url("/domains"), "https://example.com/api/v1/domains");
     }
-
-    // #[tokio::test]
-    // async fn n_list_follows_pagination() {
-    //     let server = MockServer::start().await;
-    //     let page2_url = format!("{}/api/v1/things?page=2", server.uri());
-    //     Mock::given(method("GET"))
-    //         .and(path("/api/v1/things"))
-    //         .and(query_param_is_missing("page"))
-    //         .and(header("authorization", "Bearer wsk_test"))
-    //         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-    //             "next": page2_url,
-    //             "results": [{"v": 1}, {"v": 2}],
-    //         })))
-    //         .expect(1)
-    //         .mount(&server)
-    //         .await;
-    //     Mock::given(method("GET"))
-    //         .and(path("/api/v1/things"))
-    //         .and(query_param("page", "2"))
-    //         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-    //             "next": null,
-    //             "results": [{"v": 3}],
-    //         })))
-    //         .expect(1)
-    //         .mount(&server)
-    //         .await;
-    //
-    //     let items = client(&server.uri()).n_list::<Things>(()).await.unwrap();
-    //     let vals: Vec<i64> = items.iter().map(|i| i["v"].as_i64().unwrap()).collect();
-    //     assert_eq!(vals, vec![1, 2, 3]);
-    // }
-
-    // #[tokio::test]
-    // async fn n_list_accepts_bare_array() {
-    //     let server = MockServer::start().await;
-    //     Mock::given(method("GET"))
-    //         .and(path("/api/v1/things"))
-    //         .respond_with(ResponseTemplate::new(200).set_body_json(json!([{"v": 1}])))
-    //         .mount(&server)
-    //         .await;
-    //
-    //     let items = client(&server.uri()).n_list::<Things>(()).await.unwrap();
-    //     assert_eq!(items.len(), 1);
-    // }
 
     #[tokio::test]
     async fn n_send_tolerates_empty_body() {
@@ -207,26 +179,23 @@ mod tests {
             .unwrap();
     }
 
-    // #[tokio::test]
-    // async fn error_401_includes_detail_and_hint_and_downcasts() {
-    //     let server = MockServer::start().await;
-    //     Mock::given(method("GET"))
-    //         .and(path("/api/v1/things"))
-    //         .respond_with(
-    //             ResponseTemplate::new(401).set_body_json(json!({"detail": "Invalid token."})),
-    //         )
-    //         .mount(&server)
-    //         .await;
-    //
-    //     let err = client(&server.uri())
-    //         .n_list::<Things>(())
-    //         .await
-    //         .unwrap_err();
-    //     let msg = format!("{err:#}");
-    //     assert!(msg.contains("401 Unauthorized"), "got: {msg}");
-    //     assert!(msg.contains("Invalid token."), "got: {msg}");
-    //     // `auth status` relies on recovering the code from the error chain.
-    //     let http = err.downcast_ref::<HttpError>().expect("HttpError in chain");
-    //     assert_eq!(http.status.as_u16(), 401);
-    // }
+    #[tokio::test]
+    async fn error_401_includes_detail_and_hint_and_downcasts() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/api/v1/things"))
+            .respond_with(
+                ResponseTemplate::new(401).set_body_json(json!({"detail": "Invalid token."})),
+            )
+            .mount(&server)
+            .await;
+
+        let err = client(&server.uri()).send::<Things>(()).await.unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(msg.contains("401 Unauthorized"), "got: {msg}");
+        assert!(msg.contains("Invalid token."), "got: {msg}");
+        // `auth status` relies on recovering the code from the error chain.
+        let http = err.downcast_ref::<HttpError>().expect("HttpError in chain");
+        assert_eq!(http.status.as_u16(), 401);
+    }
 }

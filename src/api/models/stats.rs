@@ -1,7 +1,6 @@
 use crate::api::request_desc::RequestDesc;
 use crate::api::table::DisplayTable;
-use crate::i18n;
-use crate::i18n::M;
+use crate::t;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -29,11 +28,11 @@ impl RequestDesc for StatBans {
 impl DisplayTable for BanStats {
     fn headers(&self) -> Vec<&'static str> {
         vec![
-            i18n::tr(M::HIp),
-            i18n::tr(M::HType),
-            i18n::tr(M::HReason),
-            i18n::tr(M::HLastSeen),
-            i18n::tr(M::HRequests),
+            t!(h_ip),
+            t!(h_type),
+            t!(h_reason),
+            t!(h_last_seen),
+            t!(h_requests),
         ]
     }
 
@@ -55,7 +54,7 @@ impl DisplayTable for BanStats {
 
     fn display_as_table(&self) {
         if self.bans.is_empty() {
-            crate::util::output::info(i18n::tr(M::NoBans));
+            crate::util::output::info(t!(no_bans));
         } else {
             DisplayTable::display_as_table(self)
         }

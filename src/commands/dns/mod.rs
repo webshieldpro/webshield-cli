@@ -18,7 +18,7 @@ use crate::api::models::dns::{
 use crate::api::table::ProgramRes;
 use crate::api::Client;
 use crate::commands::domains::resolve_domain;
-use crate::i18n::{self, M};
+use crate::t;
 use crate::Context;
 use anyhow::{bail, Result};
 use clap::Subcommand;
@@ -27,64 +27,72 @@ use std::borrow::Cow;
 
 #[derive(Subcommand)]
 pub enum DnsCommand {
-    // TODO Duplicated code fragment
-    /// List DNS records of a domain.
+    #[command(about = t!(cmd_dns_list))]
     List {
+        #[arg(help = t!(arg_domain))]
         domain: String,
-        /// Filter by record type (A, AAAA, CNAME, TXT, MX, …).
-        // #[arg(long = "type")]
+        #[arg(help = t!(arg_record_type_filter))]
         rr_type: Option<RrType>,
     },
-    /// Add value(s) to a record (appends for A/AAAA/TXT).
+    #[command(about = t!(cmd_dns_add))]
     Add {
+        #[arg(help = t!(arg_domain))]
         domain: String,
-        /// Record name relative to the domain, or `@` for the apex.
+        #[arg(help = t!(arg_record_name))]
         name: String,
-        /// Record type.
-        #[arg(name = "TYPE")]
+        #[arg(name = "TYPE", help = t!(arg_record_type))]
         rr_type: RrType,
-        /// One or more values.
-        #[arg(required = true)]
+        #[arg(required = true, help = t!(arg_record_value))]
         value: Vec<String>,
-        #[arg(long, default_value_t = 300)]
+        #[arg(long, default_value_t = 300, help = t!(arg_record_ttl))]
         ttl: i64,
     },
-    /// Replace a record with exactly the given values.
+    #[command(about = t!(cmd_dns_set))]
     Set {
+        #[arg(help = t!(arg_domain))]
         domain: String,
+        #[arg(help = t!(arg_record_name))]
         name: String,
-        #[arg(name = "TYPE")]
+        #[arg(name = "TYPE", help = t!(arg_record_type))]
         rr_type: RrType,
-        #[arg(required = true)]
+        #[arg(required = true, help = t!(arg_record_value))]
         value: Vec<String>,
-        #[arg(long, default_value_t = 300)]
+        #[arg(long, default_value_t = 300, help = t!(arg_record_ttl))]
         ttl: i64,
     },
-    /// Remove record value(s); without values — remove the whole set.
+    #[command(about = t!(cmd_dns_remove))]
     Remove {
+        #[arg(help = t!(arg_domain))]
         domain: String,
+        #[arg(help = t!(arg_record_name))]
         name: String,
-        #[arg(name = "TYPE")]
+        #[arg(name = "TYPE", help = t!(arg_record_type))]
         rr_type: RrType,
-        /// Specific values to remove (otherwise the whole rrset is removed).
+        #[arg(help = t!(arg_record_value_remove))]
         value: Vec<String>,
     },
-    /// DNSSEC management.
     #[command(subcommand)]
+    #[command(about = t!(cmd_dns_dnssec))]
     Dnssec(DnssecCommand),
 }
 
 #[derive(Subcommand)]
 pub enum DnssecCommand {
-    /// DNSSEC status and DS records for the registrar.
-    Status { domain: String },
-    /// Enable online zone signing.
-    Enable { domain: String },
-    /// Disable DNSSEC (blocked while a DS is visible in the parent; see --force).
-    Disable {
+    #[command(about = t!(cmd_dnssec_status))]
+    Status {
+        #[arg(help = t!(arg_domain))]
         domain: String,
-        /// Remove signing even with a live DS in the parent (risk of SERVFAIL).
-        #[arg(long)]
+    },
+    #[command(about = t!(cmd_dnssec_enable))]
+    Enable {
+        #[arg(help = t!(arg_domain))]
+        domain: String,
+    },
+    #[command(about = t!(cmd_dnssec_disable))]
+    Disable {
+        #[arg(help = t!(arg_domain))]
+        domain: String,
+        #[arg(long, help = t!(arg_dnssec_force))]
         force: bool,
     },
 }
@@ -229,7 +237,6 @@ async fn change(
     ttl: i64,
     op: Op,
 ) -> Result<String> {
-    // TODO
     let d = resolve_domain(client, domain).await?;
 
     let ty = rr_type.as_str().to_uppercase();
@@ -239,13 +246,14 @@ async fn change(
         .map(|v| rr_type.normalize(v))
         .collect::<Vec<String>>();
 
+    // The message differs per operation; the locale gives back a formatter.
     let (msg, count) = match op {
         Op::Add => {
             let l = values.len();
 
             let rrset = dns_set(&name, &ty, ttl, values);
             post_rrset(client, d.id, rrset).await?;
-            (M::DnsAdded, l)
+            (t!(dns_added), l)
         }
         Op::Set => {
             let fqdn = to_fqdn(&name, &d.name);
@@ -272,18 +280,14 @@ async fn change(
             let l = values.len();
             let rrset = dns_set(&name, &ty, ttl, values);
             post_rrset(client, d.id, rrset).await?;
-            (M::DnsSet, l)
+            (t!(dns_set), l)
         }
         Op::Remove => {
             let targets: Vec<String> = if values.is_empty() {
                 let fqdn = to_fqdn(&name, &d.name);
                 let resp = client.send::<DNSDomainRecords>(d.id).await?;
-                let rrset = find_rrset(&resp.rrsets, &fqdn, &ty).ok_or_else(|| {
-                    anyhow::anyhow!(i18n::f(
-                        M::RecordNotFound,
-                        &[("name", &name), ("type", &ty)]
-                    ))
-                })?;
+                let rrset = find_rrset(&resp.rrsets, &fqdn, &ty)
+                    .ok_or_else(|| anyhow::anyhow!(t!(record_not_found, &name, &ty)))?;
                 rrset
                     .records
                     .iter()
@@ -293,28 +297,17 @@ async fn change(
                 values
             };
             if targets.is_empty() {
-                bail!(i18n::f(
-                    M::NothingToDelete,
-                    &[("name", &name), ("type", &ty)]
-                ));
+                bail!(t!(nothing_to_delete, &name, &ty));
             }
 
             let l = targets.len();
             let del = dns_req_del(&name, &ty, targets);
             post_rrset(client, d.id, del).await?;
-            (M::DnsRemoved, l)
+            (t!(dns_removed), l)
         }
     };
 
-    Ok(i18n::f(
-        msg,
-        &[
-            ("name", &name),
-            ("type", &ty),
-            ("domain", &d.name),
-            ("count", &count.to_string()),
-        ],
-    ))
+    Ok(msg(&name, &ty, &d.name, &count.to_string()))
 }
 
 async fn dnssec(client: &Client, cmd: DnssecCommand) -> Result<DnssecResp> {
@@ -341,5 +334,47 @@ async fn dnssec(client: &Client, cmd: DnssecCommand) -> Result<DnssecResp> {
             let r = client.send::<DnssecDelete>((d.id, has_force)).await?;
             Ok(r)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rrset(name: &str, ty: &str) -> RRSet<'static> {
+        RRSet {
+            name: Cow::Owned(name.to_string()),
+            rr_type: Cow::Owned(ty.to_string()),
+            ttl: Some(300),
+            records: Vec::new(),
+            proxied: false,
+            change_type: None,
+        }
+    }
+
+    #[test]
+    fn to_fqdn_expands_names_relative_to_the_domain() {
+        assert_eq!(to_fqdn("@", "example.com"), "example.com.");
+        assert_eq!(to_fqdn("", "example.com"), "example.com.");
+        assert_eq!(to_fqdn("www", "example.com"), "www.example.com.");
+        // An already qualified name is not doubled.
+        assert_eq!(
+            to_fqdn("www.example.com", "example.com"),
+            "www.example.com."
+        );
+        // Case and trailing dots are ignored.
+        assert_eq!(
+            to_fqdn("WWW.Example.COM.", "example.com."),
+            "www.example.com."
+        );
+    }
+
+    #[test]
+    fn find_rrset_matches_case_and_dot_insensitively() {
+        let rrsets = vec![rrset("www.example.com.", "A")];
+        assert!(find_rrset(&rrsets, "www.example.com.", "a").is_some());
+        assert!(find_rrset(&rrsets, "www.example.com", "A").is_some());
+        assert!(find_rrset(&rrsets, "other.example.com.", "A").is_none());
+        assert!(find_rrset(&rrsets, "www.example.com.", "TXT").is_none());
     }
 }

@@ -86,7 +86,7 @@ Copy-paste territory. Swap the names, you know the drill.
     webshield stats summary example.com --range 7d
 
     # Pipe the output straight to JSON
-    webshield -o json domains list
+    webshield -o json domains list 1
 
 ### A note on `add` / `set` / `remove` logic (A, AAAA, TXT, MX)
 

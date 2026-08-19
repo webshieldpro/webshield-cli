@@ -1,6 +1,6 @@
 //! WebShield CLI — command-line client for domains, DNS records, proxying and static
-//! site publishing via the `/api/v1` API. Help text is English by default; runtime
-//! output and help follow `--lang`/`WS_LANG`/system locale (see `i18n`).
+//! site publishing via the `/api/v1` API. Both runtime output and help follow
+//! `--lang`/`WS_LANG`/profile/system locale (see `i18n`).
 
 mod api;
 mod commands;
@@ -8,52 +8,42 @@ mod config;
 mod i18n;
 mod util;
 
-use crate::i18n::locale::{set_locale, LOCALE};
 use anyhow::{bail, Result};
-use clap::{CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum};
+use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
 use clap_complete_nushell::Nushell;
-use std::time::SystemTime;
 
 use crate::api::table::ProgramRes;
-use api::Client;
-// use config::Config;
-
-use crate::i18n::locale::{load_locale, LocaleCode};
-// use crate::i18n::Lang;
 use crate::config::Config;
+use crate::i18n::locale::{prescan_flag, resolve};
+use crate::i18n::{set_locale, LocaleCode};
+use api::Client;
 use util::output::OutputFormat;
 
 #[derive(Parser)]
 #[command(
     name = "webshield",
     version,
-    about = "WebShield command-line client",
+    about = t!(app_about),
     propagate_version = true
 )]
 struct Cli {
-    /// Config profile (defaults to the active one from config.toml).
-    #[arg(long, short = 'p', global = true, env = "WS_PROFILE")]
+    #[arg(long, short = 'p', global = true, env = "WS_PROFILE", help = t!(arg_profile))]
     profile: Option<String>,
 
-    /// Base API URL (overrides the profile).
-    #[arg(long, global = true, env = "WS_API_URL")]
+    #[arg(long, global = true, env = "WS_API_URL", help = t!(arg_api_url))]
     api_url: Option<String>,
 
-    /// Personal token `wsk_…` (overrides the profile).
-    #[arg(long, global = true, env = "WS_TOKEN", hide_env_values = true)]
+    #[arg(long, global = true, env = "WS_TOKEN", hide_env_values = true, help = t!(arg_token))]
     token: Option<String>,
 
-    /// Interface language.
-    #[arg(long, global = true, value_enum)]
+    #[arg(long, global = true, value_enum, help = t!(arg_lang))]
     lang: Option<LocaleCode>,
 
-    /// Output format.
-    #[arg(long, short = 'o', global = true, value_enum, default_value_t = OutputFormat::Table)]
+    #[arg(long, short = 'o', global = true, value_enum, default_value_t = OutputFormat::Table, help = t!(arg_output))]
     output: OutputFormat,
 
-    /// Do not ask for confirmation on destructive operations.
-    #[arg(long, short = 'y', global = true)]
+    #[arg(long, short = 'y', global = true, help = t!(arg_yes))]
     yes: bool,
 
     #[command(subcommand)]
@@ -62,38 +52,30 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Authentication and profiles.
     #[command(subcommand)]
     #[command(about = t!(cmd_auth))]
     Auth(commands::auth::AuthCommand),
-    /// Domains (zones).
     #[command(subcommand)]
     #[command(about = t!(cmd_domains))]
     Domains(commands::domains::DomainsCommand),
-    /// DNS records.
     #[command(subcommand)]
     #[command(about = t!(cmd_dns))]
     Dns(commands::dns::DnsCommand),
-    /// Static sites and publishing.
     #[command(subcommand)]
     #[command(about = t!(cmd_sites))]
     Sites(commands::sites::SitesCommand),
-    /// Proxy/redirect host edge settings.
     #[command(subcommand)]
     #[command(about = t!(cmd_proxy))]
     Proxy(commands::proxy::ProxyCommand),
-    /// Statistics and protection.
     #[command(subcommand)]
     #[command(about = t!(cmd_stats))]
     Stats(commands::stats::StatsCommand),
-    /// Billing: balance, usage, tariffs.
     #[command(subcommand)]
     #[command(about = t!(cmd_billing))]
     Billing(commands::billing::BillingCommand),
-    /// Generate a shell completion script.
     #[command(about = t!(cmd_completion))]
     Completion {
-        /// Shell: bash, zsh, fish, powershell, elvish, nushell.
+        #[arg(help = t!(arg_shell))]
         shell: CompletionShell,
     },
 }
@@ -115,6 +97,7 @@ pub struct Context {
     profile: Option<String>,
     api_url: Option<String>,
     token: Option<String>,
+    pub lang: Option<LocaleCode>,
     pub output: OutputFormat,
     pub yes: bool,
 }
@@ -133,67 +116,63 @@ impl Context {
     }
 
     /// Builds the HTTP client, resolving URL and token from flags/env/profile.
-    // pub fn new_client(&self) -> Result<Client> {
-    //     let cfg = Config::load()?;
-    //     let profile_name = cfg.active_profile_name(self.profile.as_deref());
-    //     let profile = cfg.profile(&profile_name);
-    //
-    //     let api_url = self
-    //         .api_url
-    //         .clone()
-    //         .or_else(|| profile.map(|p| p.api_url.clone()))
-    //         .unwrap_or_else(|| config::DEFAULT_API_URL.to_string());
-    //
-    //     let token = self
-    //         .token
-    //         .clone()
-    //         .or_else(|| profile.and_then(|p| p.token.clone()));
-    //
-    //     let Some(token) = token else {
-    //         bail!(i18n::f(i18n::M::NoToken, &[("profile", &profile_name)]));
-    //     };
-    //     Client::new(api_url, token)
-    // }
-
     pub fn new_client(&self) -> Result<Client> {
-        Client::new("".into(), "".into())
+        let cfg = Config::load()?;
+        let profile_name = cfg.active_profile_name(self.profile.as_deref());
+        let profile = cfg.profile(&profile_name);
+
+        let api_url = self
+            .api_url
+            .clone()
+            .or_else(|| profile.and_then(|p| p.api_url.clone()))
+            .unwrap_or_else(|| config::DEFAULT_API_URL.to_string());
+
+        let token = self
+            .token
+            .clone()
+            .or_else(|| profile.and_then(|p| p.token.clone()));
+
+        let Some(token) = token else {
+            bail!(t!(no_token, &profile_name));
+        };
+        Client::new(api_url, token)
     }
+}
+
+/// Language stored in the profile that is about to be used. Best effort: a broken
+/// config must not blow up before clap gets a chance to report the real problem.
+fn profile_lang(args: &[String]) -> Option<LocaleCode> {
+    let cfg = Config::load().ok()?;
+    let name = prescan_flag(args, &["--profile", "-p"])
+        .or_else(|| std::env::var("WS_PROFILE").ok())
+        .unwrap_or_else(|| cfg.active_profile_name(None));
+    cfg.profile(&name).and_then(|p| p.lang)
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
-    
-    set_locale(LocaleCode::En);
+async fn main() {
+    // The language is needed before parsing: help is localized as well, and clap
+    // reads the `t!` attributes while building the command tree.
+    let args: Vec<String> = std::env::args().collect();
+    set_locale(resolve(&args, || profile_lang(&args)));
 
     if let Err(err) = run().await {
-        eprintln!(
-            "{{}} {err:#}",
-            // Todo
-            // console::style(i18n::tr(i18n::M::ErrorPrefix)).red().bold()
-        );
+        eprintln!("{} {err:#}", console::style(t!(error_prefix)).red().bold());
         std::process::exit(1);
     }
-
-    Ok(())
 }
 
 async fn run() -> Result<()> {
-    // let cmd = i18n::localize_help(Cli::command());
-    // let matches = cmd.get_matches();
-    // let cli = Cli::from_arg_matches(&matches)?;
-
     let cli = Cli::parse();
 
     let ctx = Context {
         profile: cli.profile,
         api_url: cli.api_url,
         token: cli.token,
+        lang: cli.lang,
         output: cli.output,
         yes: cli.yes,
     };
-
-    println!("{:?}", cli.lang);
-    // ctx.new_client().clone();
 
     let result: Result<ProgramRes> = match cli.command {
         Command::Auth(cmd) => commands::auth::run(&ctx, cmd).await,
@@ -233,7 +212,7 @@ async fn run() -> Result<()> {
     };
 
     match result? {
-        ProgramRes::Str(s) => println!("{}", s),
+        ProgramRes::Str(s) => println!("{s}"),
         ProgramRes::Table(tb) => {
             if ctx.output == OutputFormat::Table {
                 tb.display_as_table()

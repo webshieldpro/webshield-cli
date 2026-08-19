@@ -6,18 +6,25 @@ use crate::api::models::billing::{
 use crate::api::table::ProgramRes;
 use crate::api::Client;
 use crate::commands::domains::resolve_domain;
+use crate::t;
 use crate::Context;
 use anyhow::Result;
 use clap::Subcommand;
 
 #[derive(Subcommand)]
 pub enum BillingCommand {
-    /// Account balance per currency.
+    #[command(about = t!(cmd_billing_balance))]
     Balance,
-    /// Traffic usage of a domain vs the tariff limit.
-    Usage { domain: String },
-    /// Current and available tariffs of a domain.
-    Tariffs { domain: String },
+    #[command(about = t!(cmd_billing_usage))]
+    Usage {
+        #[arg(help = t!(arg_domain))]
+        domain: String,
+    },
+    #[command(about = t!(cmd_billing_tariffs))]
+    Tariffs {
+        #[arg(help = t!(arg_domain))]
+        domain: String,
+    },
 }
 
 pub async fn run(ctx: &Context, cmd: BillingCommand) -> Result<ProgramRes> {

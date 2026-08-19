@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crate::i18n::Lang;
+use crate::i18n::LocaleCode;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
@@ -21,25 +21,16 @@ pub struct Config {
     pub profiles: HashMap<String, Profile>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Profile {
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub api_url: Option<String>,
     /// Personal `wsk_…` token. Stored in plain text — same as `~/.aws/credentials`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub token: Option<String>,
-
-    pub lang: Lang,
-}
-
-impl Default for Profile {
-    fn default() -> Self {
-        Self {
-            api_url: None,
-            token: None,
-            lang: Lang::En,
-        }
-    }
+    /// Interface language of this profile. Unset = follow the environment.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lang: Option<LocaleCode>,
 }
 
 /// Path to the configuration file (`$XDG_CONFIG_HOME/webshield/config.toml`).
@@ -95,29 +86,31 @@ impl Config {
 mod tests {
     use super::*;
 
-    // #[test]
-    // fn parses_profiles_and_defaults_missing_api_url() {
-    //     let cfg: Config = toml::from_str(
-    //         r#"
-    //         default_profile = "work"
-    //
-    //         [profiles.work]
-    //         api_url = "https://staging.example.com"
-    //         token = "wsk_abc"
-    //
-    //         [profiles.home]
-    //         token = "wsk_def"
-    //         "#,
-    //     )
-    //     .unwrap();
-    //     assert_eq!(
-    //         cfg.profile("work").unwrap().api_url,
-    //         Some("https://staging.example.com".)
-    //     );
-    //     // api_url falls back to the production default when omitted.
-    //     assert_eq!(cfg.profile("home").unwrap().api_url, Some(DEFAULT_API_URL));
-    //     assert!(cfg.profile("missing").is_none());
-    // }
+    #[test]
+    fn parses_profiles_and_optional_fields() {
+        let cfg: Config = toml::from_str(
+            r#"
+            default_profile = "work"
+
+            [profiles.work]
+            api_url = "https://staging.example.com"
+            token = "wsk_abc"
+            lang = "ru"
+
+            [profiles.home]
+            token = "wsk_def"
+            "#,
+        )
+        .unwrap();
+        let work = cfg.profile("work").unwrap();
+        assert_eq!(work.api_url.as_deref(), Some("https://staging.example.com"));
+        assert_eq!(work.lang, Some(LocaleCode::Ru));
+        // An omitted api_url/lang stays empty — the caller falls back to the default.
+        let home = cfg.profile("home").unwrap();
+        assert_eq!(home.api_url, None);
+        assert_eq!(home.lang, None);
+        assert!(cfg.profile("missing").is_none());
+    }
 
     #[test]
     fn active_profile_precedence() {

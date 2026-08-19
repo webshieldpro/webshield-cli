@@ -7,7 +7,7 @@ use crate::api::models::domain::{
 use crate::api::table::ProgramRes;
 use crate::api::Client;
 use crate::commands::util::Page;
-use crate::i18n::{self, M};
+use crate::t;
 use crate::util::input::confirm;
 use crate::util::output::{info, success, warn};
 use crate::Context;
@@ -16,22 +16,30 @@ use clap::Subcommand;
 
 #[derive(Subcommand)]
 pub enum DomainsCommand {
-    /// List your domains.
+    #[command(about = t!(cmd_domains_list))]
     List(Page),
-    /// Add a domain (create the zone).
+    #[command(about = t!(cmd_domains_add))]
     Add {
-        /// Domain name (e.g. example.com).
+        #[arg(help = t!(arg_domain_name))]
         name: String,
-        /// Import existing records on creation: scan | none.
-        #[arg(long, default_value = "scan")]
+        #[arg(long, default_value = "scan", help = t!(arg_domains_import))]
         import: String,
     },
-    /// Show a domain.
-    Get { name: String },
-    /// Delete a domain and its zone.
-    Remove { name: String },
-    /// Check delegation (NS point to us).
-    Check { name: String },
+    #[command(about = t!(cmd_domains_get))]
+    Get {
+        #[arg(help = t!(arg_domain_name))]
+        name: String,
+    },
+    #[command(about = t!(cmd_domains_remove))]
+    Remove {
+        #[arg(help = t!(arg_domain_name))]
+        name: String,
+    },
+    #[command(about = t!(cmd_domains_check))]
+    Check {
+        #[arg(help = t!(arg_domain_name))]
+        name: String,
+    },
 }
 
 pub async fn run(ctx: &Context, cmd: DomainsCommand) -> Result<ProgramRes> {
@@ -51,14 +59,11 @@ pub async fn run(ctx: &Context, cmd: DomainsCommand) -> Result<ProgramRes> {
 
 async fn remove(yes: bool, client: &Client, name: &str) -> Result<()> {
     let domain = resolve_domain(client, name).await?;
-    confirm(
-        yes,
-        &i18n::f(M::ConfirmDeleteDomain, &[("name", &domain.name)]),
-    )?;
+    confirm(yes, &t!(confirm_delete_domain, &domain.name))?;
 
     client.send::<DomainDelete>(domain.id).await?;
 
-    success(i18n::f(M::DomainDeleted, &[("name", &domain.name)]));
+    success(t!(domain_deleted, &domain.name));
     Ok(())
 }
 
@@ -68,39 +73,27 @@ async fn check(client: &Client, name: &str) -> Result<()> {
     let result = client.send::<DomainCheckDelegation>(domain.id).await?;
 
     match result.delegated {
-        Some(true) => success(i18n::f(M::DelegationOk, &[("name", &domain.name)])),
+        Some(true) => success(t!(delegation_ok, &domain.name)),
         Some(false) => {
-            warn(i18n::f(
-                M::DelegationNotDelegated,
-                &[("name", &domain.name)],
-            ));
+            warn(t!(delegation_not_delegated, &domain.name));
 
             if !result.current_ns.is_empty() {
-                info(i18n::f(
-                    M::DelegationCurrentNs,
-                    &[("ns", &result.current_ns.join(", "))],
-                ));
+                info(t!(delegation_current_ns, &result.current_ns.join(", ")));
             }
 
             if !result.missing_ns.is_empty() {
-                warn(i18n::f(
-                    M::DelegationMissingNs,
-                    &[("ns", &result.missing_ns.join(", "))],
-                ));
+                warn(t!(delegation_missing_ns, &result.missing_ns.join(", ")));
             }
             if !result.extra_ns.is_empty() {
-                warn(i18n::f(
-                    M::DelegationExtraNs,
-                    &[("ns", &result.extra_ns.join(", "))],
-                ));
+                warn(t!(delegation_extra_ns, &result.extra_ns.join(", ")));
             }
             if result.missing_ns.is_empty() && result.extra_ns.is_empty() {
-                warn(i18n::tr(M::DelegationNoNs));
+                warn(t!(delegation_no_ns));
             }
-            info(i18n::tr(M::DelegationPropagationNote));
+            info(t!(delegation_propagation_note));
         }
         None => {
-            info(i18n::tr(M::DelegationUnknown));
+            info(t!(delegation_unknown));
         }
     };
     Ok(())
@@ -121,10 +114,7 @@ async fn add(client: &Client, name: String, import: String) -> Result<()> {
         )
         .await?;
 
-    success(i18n::f(
-        M::DomainCreated,
-        &[("name", &created.name), ("id", &created.id.to_string())],
-    ));
+    success(t!(domain_created, &created.name, &created.id.to_string()));
 
     Ok(())
 }
@@ -143,5 +133,5 @@ pub async fn resolve_domain(client: &Client, name: &str) -> Result<DomainInner> 
         .results
         .into_iter()
         .next()
-        .ok_or_else(|| anyhow::anyhow!(i18n::f(M::DomainNotFound, &[("name", name)])))
+        .ok_or_else(|| anyhow::anyhow!(t!(domain_not_found, name)))
 }

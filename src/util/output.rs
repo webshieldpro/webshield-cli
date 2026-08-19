@@ -1,6 +1,6 @@
 //! Output formatting: human-readable tables and JSON for scripts.
 
-use crate::i18n::{self, Lang};
+use crate::t;
 use clap::ValueEnum;
 use comfy_table::{presets::UTF8_FULL, Cell, ContentArrangement, Table};
 use console::style;
@@ -8,15 +8,16 @@ use std::fmt::Display;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum OutputFormat {
-    /// Human-readable table (default).
+    #[value(help = t!(arg_output_table))]
     Table,
-    /// Machine-readable JSON.
+    #[value(help = t!(arg_output_json))]
     Json,
 }
 
-/// Formats a byte count with binary units (1023 B, 1.5 KB, …).
+/// Formats a byte count with decimal units (999 B, 1.5 kB, …) — the same scale
+/// traffic and storage are billed in.
 pub fn fmt_size(bytes: i64) -> String {
-    const UNITS: [&str; 6] = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
+    const UNITS: [&str; 6] = ["B", "kB", "MB", "GB", "TB", "PB"];
 
     let mut v = bytes as f64;
     let mut i = 0;
@@ -34,7 +35,7 @@ pub fn fmt_size(bytes: i64) -> String {
 /// Builds and prints a table with headers and rows.
 pub fn print_table(headers: &[&str], rows: Vec<Vec<String>>) {
     if rows.is_empty() {
-        println!("{}", style(i18n::tr(i18n::M::Empty)).dim());
+        println!("{}", style(t!(empty)).dim());
         return;
     }
     let mut table = Table::new();
@@ -65,10 +66,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn fmt_size_uses_binary_units() {
+    fn fmt_size_uses_decimal_units() {
         assert_eq!(fmt_size(0), "0 B");
         assert_eq!(fmt_size(999), "999 B");
-        assert_eq!(fmt_size(1536), "1.5 KiB");
-        assert_eq!(fmt_size(5 * 1000 * 1000), "5.0 MiB");
+        assert_eq!(fmt_size(1536), "1.5 kB");
+        assert_eq!(fmt_size(5 * 1000 * 1000), "5.0 MB");
     }
 }

@@ -1,7 +1,6 @@
 use crate::api::request_desc::RequestDesc;
 use crate::api::table::DisplayTable;
-use crate::i18n;
-use crate::i18n::M;
+use crate::t;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
@@ -88,17 +87,11 @@ impl<'a> From<Vec<RRSet<'a>>> for RRSetList<'a> {
 
 impl<'a> DisplayTable for RRSetList<'a> {
     fn headers(&self) -> Vec<&'static str> {
-        vec![
-            i18n::tr(M::HName),
-            i18n::tr(M::HType),
-            i18n::tr(M::HTtl),
-            i18n::tr(M::HProxy),
-            i18n::tr(M::HValues),
-        ]
+        vec![t!(h_name), t!(h_type), t!(h_ttl), t!(h_proxy), t!(h_values)]
     }
 
     fn rows(&self) -> Vec<Vec<String>> {
-        let yes = i18n::tr(M::Yes);
+        let yes = t!(yes);
         self.0
             .iter()
             .map(|r| {

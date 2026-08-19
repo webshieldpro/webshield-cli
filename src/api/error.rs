@@ -1,7 +1,7 @@
 //! API error handling: HTTP status checking and unwrapping DRF error bodies
 //! (`{"detail": …}` or a field error map) into readable text.
 
-use crate::i18n::{self, M};
+use crate::t;
 use anyhow::Result;
 use reqwest::{Response, StatusCode};
 use serde_json::Value;
@@ -23,14 +23,11 @@ impl fmt::Display for HttpError {
                 f,
                 "401 Unauthorized: {}\n{}",
                 self.detail,
-                i18n::tr(M::ErrUnauthorized)
+                t!(err_unauthorized)
             ),
-            StatusCode::FORBIDDEN => write!(
-                f,
-                "403 Forbidden: {}\n{}",
-                self.detail,
-                i18n::tr(M::ErrForbidden)
-            ),
+            StatusCode::FORBIDDEN => {
+                write!(f, "403 Forbidden: {}\n{}", self.detail, t!(err_forbidden))
+            }
             status => write!(
                 f,
                 "{} {}: {}",

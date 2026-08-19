@@ -1,7 +1,6 @@
 use crate::api::request_desc::RequestDesc;
 use crate::api::table::DisplayTable;
-use crate::i18n;
-use crate::i18n::M;
+use crate::t;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 
@@ -27,12 +26,7 @@ pub struct DomainInner {
 }
 
 fn domain_headers() -> Vec<&'static str> {
-    vec![
-        i18n::tr(M::HId),
-        i18n::tr(M::HDomain),
-        i18n::tr(M::HDelegated),
-        i18n::tr(M::HTariff),
-    ]
+    vec![t!(h_id), t!(h_domain), t!(h_delegated), t!(h_tariff)]
 }
 
 impl DisplayTable for DomainInner {
@@ -41,9 +35,9 @@ impl DisplayTable for DomainInner {
     }
 
     fn rows(&self) -> Vec<Vec<String>> {
-        let yes = i18n::tr(M::Yes);
-        let no = i18n::tr(M::No);
-        let dash = i18n::tr(M::Dash);
+        let yes = t!(yes);
+        let no = t!(no);
+        let dash = t!(dash);
 
         vec![vec![
             self.id.to_string(),

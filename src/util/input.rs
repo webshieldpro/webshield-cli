@@ -3,16 +3,15 @@ pub fn confirm(yes: bool, prompt: &str) -> anyhow::Result<()> {
     if yes {
         return Ok(());
     }
-    use crate::i18n;
-    use crate::i18n::M;
+    use crate::t;
     use anyhow::bail;
     use std::io::Write;
-    print!("{prompt} {}: ", i18n::tr(M::ConfirmSuffix));
+    print!("{prompt} {}: ", t!(confirm_suffix));
     std::io::stdout().flush().ok();
     let mut answer = String::new();
     std::io::stdin().read_line(&mut answer)?;
     if !matches!(&answer.trim().to_ascii_lowercase() as &str, "y" | "yes") {
-        bail!(i18n::tr(M::ConfirmCancelled));
+        bail!(t!(confirm_cancelled));
     }
     Ok(())
 }

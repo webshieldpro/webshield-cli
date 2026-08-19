@@ -17,7 +17,7 @@ use crate::api::table::ProgramRes;
 use crate::api::Client;
 use crate::commands::domains::resolve_domain;
 use crate::commands::util::Page;
-use crate::i18n::{self, M};
+use crate::t;
 use crate::util::output::{info, success};
 use crate::Context;
 use anyhow::{bail, Context as _, Result};
@@ -39,45 +39,45 @@ const HASH_CONCURRENCY: usize = 8;
 
 #[derive(Subcommand)]
 pub enum SitesCommand {
-    /// List static sites.
+    #[command(about = t!(cmd_sites_list))]
     List(Page),
-    /// Create a static site on a host.
+    #[command(about = t!(cmd_sites_create))]
     Create {
-        /// Site hostname (e.g. www.example.com).
+        #[arg(help = t!(arg_site_hostname))]
         hostname: String,
-        /// Owner domain.
-        #[arg(long)]
+        #[arg(long, help = t!(arg_site_domain))]
         domain: String,
     },
-    /// Incrementally publish a directory as the site content.
+    #[command(about = t!(cmd_sites_publish))]
     Publish {
-        /// Site hostname (omit when --site-id is given).
+        #[arg(help = t!(arg_publish_hostname))]
         hostname: Option<String>,
-        /// Site id; skips the hostname lookup (useful for narrow sites:publish tokens).
-        #[arg(long)]
+        #[arg(long, help = t!(arg_publish_site_id))]
         site_id: Option<i64>,
-        /// Built site directory.
-        #[arg(long)]
+        #[arg(long, help = t!(arg_publish_dir))]
         dir: PathBuf,
-        /// Show the plan without applying changes.
-        #[arg(long)]
+        #[arg(long, help = t!(arg_publish_dry_run))]
         dry_run: bool,
     },
-    /// Publish the site from one of your own object-storage buckets.
+    #[command(about = t!(cmd_sites_publish_bucket))]
     PublishFromBucket {
-        /// Site hostname.
+        #[arg(help = t!(arg_site_hostname))]
         hostname: String,
-        /// Source bucket name (short `<name>` or full `u<id>-<name>`).
-        #[arg(long)]
+        #[arg(long, help = t!(arg_bucket))]
         bucket: String,
-        /// Source prefix (directory) inside the bucket. Empty = bucket root.
-        #[arg(long, default_value = "")]
+        #[arg(long, default_value = "", help = t!(arg_bucket_path))]
         path: String,
     },
-    /// List files of the current draft.
-    Files { hostname: String },
-    /// Unpublish the site.
-    Disable { hostname: String },
+    #[command(about = t!(cmd_sites_files))]
+    Files {
+        #[arg(help = t!(arg_site_hostname))]
+        hostname: String,
+    },
+    #[command(about = t!(cmd_sites_disable))]
+    Disable {
+        #[arg(help = t!(arg_site_hostname))]
+        hostname: String,
+    },
 }
 
 pub async fn run(ctx: &Context, cmd: SitesCommand) -> Result<ProgramRes> {
@@ -93,11 +93,11 @@ pub async fn run(ctx: &Context, cmd: SitesCommand) -> Result<ProgramRes> {
             dir,
             dry_run,
         } => {
-            // --site-id обходит листинг сайтов: узкому токену sites:publish его достаточно.
+            // --site-id skips the site listing: a narrow sites:publish token has nothing else.
             let id = match (site_id, hostname) {
                 (Some(id), _) => id,
                 (None, Some(host)) => resolve_site(&client, host).await?.id,
-                (None, None) => bail!(i18n::tr(M::PublishNeedsSiteRef)),
+                (None, None) => bail!(t!(publish_needs_site_ref)),
             };
             publish(&client, id, &dir, dry_run)
                 .await
@@ -117,7 +117,7 @@ pub async fn run(ctx: &Context, cmd: SitesCommand) -> Result<ProgramRes> {
         SitesCommand::Disable { hostname } => {
             let site = resolve_site(&client, hostname).await?;
             client.send::<SiteDisable>(site.id).await?;
-            success(i18n::f(M::SiteDisabled, &[("host", &site.hostname)]));
+            success(t!(site_disabled, &site.hostname));
             Ok(ProgramRes::Idle)
         }
     }
@@ -132,7 +132,7 @@ async fn resolve_site(client: &Client, hostname: String) -> Result<SitesListInne
         .results
         .into_iter()
         .next()
-        .ok_or_else(|| anyhow::anyhow!(i18n::f(M::NotFoundSite, &[("host", &hostname)])))
+        .ok_or_else(|| anyhow::anyhow!(t!(not_found_site, &hostname)))
 }
 
 async fn list(client: &Client, page: u32) -> Result<SitesList> {
@@ -187,7 +187,7 @@ async fn publish_from_bucket(
 
     let spinner = ProgressBar::new_spinner();
     spinner.set_style(ProgressStyle::default_spinner());
-    spinner.set_message(i18n::tr(M::BucketPublishStarted).to_string());
+    spinner.set_message(t!(bucket_publish_started).to_string());
     spinner.enable_steady_tick(std::time::Duration::from_millis(120));
 
     // Poll until the site leaves the transient "publishing" status.
@@ -202,30 +202,27 @@ async fn publish_from_bucket(
                     .content_version
                     .map(|v| v.to_string())
                     .unwrap_or_default();
-                success(i18n::f(M::BucketPublished, &[("version", &version)]));
+                success(t!(bucket_published, &version));
                 return Ok(());
             }
             _ => {
                 spinner.finish_and_clear();
                 let err = site.publish_error.unwrap_or_default();
-                bail!(i18n::f(M::BucketPublishFailed, &[("error", &err)]));
+                bail!(t!(bucket_publish_failed, &err));
             }
         }
     }
     spinner.finish_and_clear();
-    bail!(i18n::tr(M::BucketPublishTimeout))
+    bail!(t!(bucket_publish_timeout))
 }
 
 // --- Publishing ---
 
 async fn publish(client: &Client, site_id: i64, dir: &Path, dry_run: bool) -> Result<()> {
     let root = std::fs::canonicalize(dir)
-        .with_context(|| i18n::f(M::DirNotFound, &[("path", &dir.display().to_string())]))?;
+        .with_context(|| t!(dir_not_found, &dir.display().to_string()))?;
     if !root.is_dir() {
-        bail!(i18n::f(
-            M::NotADir,
-            &[("path", &root.display().to_string())]
-        ));
+        bail!(t!(not_a_dir, &root.display().to_string()));
     }
 
     let resp = client.send::<SiteFiles>(site_id).await?;
@@ -258,25 +255,23 @@ async fn publish(client: &Client, site_id: i64, dir: &Path, dry_run: bool) -> Re
     let unchanged = local.len() - to_upload.len();
     println!(
         "{}",
-        i18n::f(
-            M::PublishSummary,
-            &[
-                ("id", &site_id.to_string()),
-                ("local", &local.len().to_string()),
-                ("server", &server.len().to_string()),
-                ("up", &to_upload.len().to_string()),
-                ("del", &to_delete.len().to_string()),
-                ("same", &unchanged.to_string()),
-            ],
+        t!(
+            publish_summary,
+            &site_id.to_string(),
+            &local.len().to_string(),
+            &server.len().to_string(),
+            &to_upload.len().to_string(),
+            &to_delete.len().to_string(),
+            &unchanged.to_string()
         )
     );
 
     if to_upload.is_empty() && to_delete.is_empty() {
-        info(i18n::tr(M::PublishNoChanges));
+        info(t!(publish_no_changes));
         return Ok(());
     }
     if dry_run {
-        info(i18n::tr(M::PublishDryRun));
+        info(t!(publish_dry_run));
         return Ok(());
     }
 
@@ -290,7 +285,7 @@ async fn publish(client: &Client, site_id: i64, dir: &Path, dry_run: bool) -> Re
     }
     // 6. Publish the snapshot.
     client.send::<SitePublish>(site_id).await?;
-    success(i18n::tr(M::Published));
+    success(t!(published));
     Ok(())
 }
 
@@ -368,10 +363,9 @@ async fn upload_all(client: &Client, site_id: i64, files: Vec<(String, PathBuf)>
     let total = files.len() as u64;
     let batches = make_batches(files);
     let bar = ProgressBar::new(total);
-    bar.set_style(ProgressStyle::with_template(i18n::tr(M::UploadBar))?.progress_chars("=>-"));
+    bar.set_style(ProgressStyle::with_template(t!(upload_bar))?.progress_chars("=>-"));
 
     let results = stream::iter(batches.into_iter().map(|batch| {
-        // let client = client.clone();
         let bar = bar.clone();
         async move {
             let n = batch.len() as u64;
@@ -423,10 +417,7 @@ async fn delete_all(client: &Client, site_id: i64, paths: &[String]) -> Result<(
             )
             .await?;
     }
-    info(i18n::f(
-        M::DeletedFiles,
-        &[("count", &paths.len().to_string())],
-    ));
+    info(t!(deleted_files, &paths.len().to_string()));
     Ok(())
 }
 

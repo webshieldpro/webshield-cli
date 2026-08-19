@@ -6,8 +6,10 @@
 use crate::api::error::HttpError;
 use crate::api::models::billing::Billing;
 use crate::api::table::ProgramRes;
+use crate::api::Client;
 use crate::config::{Config, Profile, DEFAULT_API_URL};
-use crate::i18n::{self, M};
+use crate::i18n::active_code;
+use crate::t;
 use crate::util::output::{info, success};
 use crate::Context;
 use anyhow::{Context as _, Result};
@@ -16,18 +18,16 @@ use console::style;
 
 #[derive(Subcommand)]
 pub enum AuthCommand {
-    /// Store a `wsk_…` token in the profile and verify it.
+    #[command(about = t!(cmd_auth_login))]
     Login {
-        /// Token `wsk_…` (prompted interactively if omitted).
-        #[arg(long)]
+        #[arg(long, help = t!(arg_login_token))]
         token: Option<String>,
-        /// Base API URL for the profile.
-        #[arg(long, default_value = DEFAULT_API_URL)]
+        #[arg(long, default_value = DEFAULT_API_URL, help = t!(arg_login_api_url))]
         api_url: String,
     },
-    /// Show the active profile and verify API access.
+    #[command(about = t!(cmd_auth_status))]
     Status,
-    /// Remove the token from the active profile.
+    #[command(about = t!(cmd_auth_logout))]
     Logout,
 }
 
@@ -44,34 +44,18 @@ pub async fn run(ctx: &Context, cmd: AuthCommand) -> Result<ProgramRes> {
 async fn login(ctx: &Context, token: Option<String>, api_url: String) -> Result<()> {
     let token = match token {
         Some(t) => t,
-        None => rpassword::prompt_password(i18n::tr(M::TokenPrompt))
-            .context("failed to read the token")?,
+        None => rpassword::prompt_password(t!(token_prompt)).context("failed to read the token")?,
     };
     let token = token.trim().to_string();
 
     if !token.starts_with("wsk_") {
-        info(i18n::tr(M::TokenWarnPrefix));
+        info(t!(token_warn_prefix));
     }
 
     let mut cfg = Config::load()?;
     let name = cfg.active_profile_name(ctx.profile_name());
 
-    match probe(&api_url, &token).await {
-        Ok(code) if code.is_success() => success(i18n::f(M::TokenSavedOk, &[("profile", &name)])),
-        Ok(code) if code.as_u16() == 403 => {
-            success(i18n::f(M::TokenSavedScoped, &[("profile", &name)]))
-        }
-        Ok(code) => info(i18n::f(
-            M::TokenSavedCode,
-            &[("code", &code.as_u16().to_string())],
-        )),
-        Err(err) => info(i18n::f(
-            M::TokenSavedProbeFail,
-            &[("err", &err.to_string())],
-        )),
-    }
-
-
+    let verdict = probe(&api_url, &token).await;
 
     let profile = cfg
         .profiles
@@ -79,10 +63,22 @@ async fn login(ctx: &Context, token: Option<String>, api_url: String) -> Result<
         .or_insert_with(Profile::default);
     profile.api_url = Some(api_url);
     profile.token = Some(token.clone());
+    // Only an explicit `--lang` is persisted: an ambient locale must not stick.
+    if let Some(lang) = ctx.lang {
+        profile.lang = Some(lang);
+    }
     if cfg.default_profile.is_none() {
         cfg.default_profile = Some(name.clone());
     }
     cfg.save()?;
+
+    // Reported only once the token really is on disk — the messages say "saved".
+    match verdict {
+        Ok(code) if code.is_success() => success(t!(token_saved_ok, &name)),
+        Ok(code) if code.as_u16() == 403 => success(t!(token_saved_scoped, &name)),
+        Ok(code) => info(t!(token_saved_code, &code.as_u16().to_string())),
+        Err(err) => info(t!(token_saved_probe_fail, &err.to_string())),
+    }
 
     Ok(())
 }
@@ -99,44 +95,42 @@ async fn status(ctx: &Context) -> Result<()> {
     let has_token = ctx.has_token() || profile.and_then(|p| p.token.as_ref()).is_some();
 
     let ht = if has_token {
-        style(i18n::tr(M::TokenSet)).green().to_string()
+        style(t!(token_set)).green().to_string()
     } else {
-        style(i18n::tr(M::TokenUnset)).red().to_string()
+        style(t!(token_unset)).red().to_string()
     };
 
     println!(
-        "{prof}  {nm}\n{url}   {api_url}\n{lbl_token} {ht}\n",
-        prof = i18n::tr(M::LblProfile),
+        "{prof} {nm}\n{url} {api_url}\n{lbl_token} {ht}\n{lbl_lang} {lang}\n",
+        prof = t!(lbl_profile),
         nm = style(&name).bold(),
-        url = i18n::tr(M::LblApiUrl),
-        lbl_token = i18n::tr(M::LblToken)
+        url = t!(lbl_api_url),
+        lbl_token = t!(lbl_token),
+        lbl_lang = t!(lbl_lang),
+        lang = active_code().as_str()
     );
 
     if !has_token {
-        info(i18n::tr(M::LoginHint));
+        info(t!(login_hint));
     } else {
         let client = ctx.new_client()?;
         let resp = client.send::<Billing>(()).await; // Any route
 
         let verdict = match resp {
-            Ok(_) => style(i18n::tr(M::AccessOk).to_string()).green(),
+            Ok(_) => style(t!(access_ok).to_string()).green(),
             // The HTTP code is recovered from the typed error in the anyhow chain.
             Err(err) => match err
                 .downcast_ref::<HttpError>()
                 .map(|http| http.status.as_u16())
             {
-                Some(401) => style(i18n::tr(M::AccessInvalid).to_string()).red(),
-                Some(403) => style(i18n::tr(M::AccessForbidden).to_string()).yellow(),
+                Some(401) => style(t!(access_invalid).to_string()).red(),
+                Some(403) => style(t!(access_forbidden).to_string()).yellow(),
 
-                other => style(i18n::f(
-                    M::AccessUnexpected,
-                    &[("code", &format!("{:?}", other))],
-                ))
-                .yellow(),
+                other => style(t!(access_unexpected, &format!("{:?}", other))).yellow(),
             },
         };
 
-        println!("{}  {verdict}\n", i18n::tr(M::LblAccess));
+        println!("{} {verdict}\n", t!(lbl_access));
     }
     Ok(())
 }
@@ -148,20 +142,22 @@ fn logout(ctx: &Context) -> Result<()> {
     if let Some(profile) = cfg.profiles.get_mut(&name) {
         profile.token = None;
         cfg.save()?;
-        success(i18n::f(M::TokenRemoved, &[("profile", &name)]));
+        success(t!(token_removed, &name));
     } else {
-        info(i18n::f(M::ProfileNotFound, &[("profile", &name)]));
+        info(t!(profile_not_found, &name));
     }
     Ok(())
 }
 
-/// Lightweight token check: GET /domains, only the status code matters.
+/// Lightweight check of a token that is not stored yet: one GET, only the status
+/// code matters — an HTTP error is an answer here, not a failure.
 async fn probe(api_url: &str, token: &str) -> Result<reqwest::StatusCode> {
-    let url = format!("{}/api/v1/domains", api_url.trim_end_matches('/')); // TODO
-    let resp = reqwest::Client::new()
-        .get(url)
-        .bearer_auth(token)
-        .send()
-        .await?;
-    Ok(resp.status())
+    let client = Client::new(api_url.to_string(), token.to_string())?;
+    match client.send::<Billing>(()).await {
+        Ok(_) => Ok(reqwest::StatusCode::OK),
+        Err(err) => match err.downcast_ref::<HttpError>() {
+            Some(http) => Ok(http.status),
+            None => Err(err),
+        },
+    }
 }
