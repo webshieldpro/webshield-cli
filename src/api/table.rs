@@ -23,7 +23,7 @@ impl<T: DisplayTable + Serialize> ResultingData for T {
 }
 
 pub enum ProgramRes {
-    Table(Box<dyn ResultingData>),
+    Data(Box<dyn ResultingData>),
     Str(String),
     Idle,
 }
@@ -39,7 +39,7 @@ where
     T: ResultingData + 'static,
 {
     fn from(s: T) -> Self {
-        Self::Table(Box::new(s))
+        Self::Data(Box::new(s))
     }
 }
 

@@ -4,13 +4,14 @@ use crate::api::models::proxy::{
     Proxies, Proxy, ProxyData, ProxyDecl, ProxyDelete, ProxyInfo, ProxyNew, ProxyPatch,
     ProxyResolve,
 };
+use crate::api::run::Run;
 use crate::api::table::ProgramRes;
 use crate::api::Client;
 use crate::commands::domains::resolve_domain;
 use crate::commands::util::Page;
 use crate::t;
+use crate::util::context::Context;
 use crate::util::input::confirm;
-use crate::Context;
 use anyhow::Result;
 use clap::{Args, Subcommand};
 
@@ -43,27 +44,28 @@ pub enum ProxyCommand {
     },
 }
 
-pub async fn run(ctx: &Context, cmd: ProxyCommand) -> Result<ProgramRes> {
-    let client = ctx.new_client()?;
-    match cmd {
-        ProxyCommand::List(page) => list(&client, page.into()).await.map(ProgramRes::from),
-        ProxyCommand::Get { hostname } => resolve_proxy(&client, &hostname)
-            .await
-            .map(ProgramRes::from),
-        ProxyCommand::Set(s) => set(&client, s).await.map(ProgramRes::from),
+impl Run for ProxyCommand {
+    async fn run<'a>(self, ctx: &'a mut Context<'a>) -> Result<ProgramRes> {
+        let yes = ctx.yes;
+        let client = ctx.client()?;
+        match self {
+            Self::List(page) => list(client, page.into()).await.map(ProgramRes::from),
+            Self::Get { hostname } => resolve_proxy(client, &hostname).await.map(ProgramRes::from),
+            Self::Set(s) => set(client, s).await.map(ProgramRes::from),
 
-        ProxyCommand::Remove { hostname } => {
-            let cfg = resolve_proxy(&client, &hostname).await?;
+            Self::Remove { hostname } => {
+                let cfg = resolve_proxy(client, &hostname).await?;
 
-            confirm(ctx.yes, &t!(confirm_remove_proxy, &hostname))?;
+                confirm(yes, &t!(confirm_remove_proxy, &hostname))?;
 
-            client.send::<ProxyDelete>(cfg.id).await?;
-            Ok(ProgramRes::from(t!(proxy_removed, &hostname)))
+                client.send::<ProxyDelete>(cfg.id).await?;
+                Ok(ProgramRes::from(t!(proxy_removed, &hostname)))
+            }
         }
     }
 }
 
-async fn find_config(client: &Client, hostname: String) -> Result<ProxyData> {
+async fn find_config(client: &Client<'_>, hostname: String) -> Result<ProxyData> {
     let config = client.send::<ProxyResolve>(hostname.clone()).await?;
 
     config
@@ -73,17 +75,17 @@ async fn find_config(client: &Client, hostname: String) -> Result<ProxyData> {
         .ok_or_else(|| anyhow::anyhow!(t!(not_found_proxy, &hostname)))
 }
 
-async fn resolve_proxy(client: &Client, hostname: &str) -> Result<ProxyData> {
+async fn resolve_proxy(client: &Client<'_>, hostname: &str) -> Result<ProxyData> {
     let needle = hostname.trim().to_lowercase();
     find_config(client, needle).await
 }
 
-async fn list(client: &Client, page: u32) -> Result<Proxies> {
+async fn list(client: &Client<'_>, page: u32) -> Result<Proxies> {
     client.send::<Proxy>(page).await
 }
 
 /// Upsert: PATCH when the config already exists, otherwise POST (domain required).
-async fn set(client: &Client, set: SetImpl) -> Result<String> {
+async fn set(client: &Client<'_>, set: SetImpl) -> Result<String> {
     let hostname = set.hostname;
     let existing = find_config(client, hostname.clone()).await.ok();
 

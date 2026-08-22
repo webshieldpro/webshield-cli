@@ -49,7 +49,7 @@ impl RequestDesc for SiteAdd {
     type Request = SiteAddReq;
     type Response = SitesListInner;
 
-    fn get_url(_: ()) -> &'static str {
+    fn get_url(_: ()) -> impl AsRef<str> {
         "static-sites"
     }
 
@@ -154,7 +154,7 @@ impl RequestDesc for SiteFiles {
     type Request = ();
     type Response = FilesResponseSite;
 
-    fn get_url(params: Self::Params) -> String {
+    fn get_url(params: Self::Params) -> impl AsRef<str> {
         format!("static-sites/{}/files", params)
     }
 

@@ -8,35 +8,36 @@ use anyhow::{Context, Result};
 use reqwest::multipart::Form;
 use reqwest::{IntoUrl, Method, RequestBuilder};
 use serde::Serialize;
+use std::borrow::Cow;
 
-pub struct Client {
+pub struct Client<'s> {
     http: reqwest::Client,
-    base: String,
-    token: String,
+    base: Cow<'s, str>,
+    token: Cow<'s, str>,
 }
 
-impl Client {
-    pub fn new(mut api_url: String, token: String) -> Result<Self> {
-        let http = reqwest::Client::builder()
-            .user_agent(concat!("webshield-cli/", env!("CARGO_PKG_VERSION")))
-            .build()
-            .context("failed to build the HTTP client")?;
+impl<'s> Client<'s> {
+    pub fn new(mut api_url: &str, token: impl Into<Cow<'s, str>>) -> Result<Self> {
+        let http = Self::build_reqwest_client()?;
         while api_url.ends_with('/') {
-            api_url.truncate(api_url.len() - 1);
+            api_url = &api_url[..api_url.len() - 1];
         }
         Ok(Self {
             http,
-            base: api_url,
-            token,
+            base: format!("{}/api/v1", api_url).into(),
+            token: token.into(),
         })
     }
 
+    fn build_reqwest_client() -> Result<reqwest::Client> {
+        reqwest::Client::builder()
+            .user_agent(concat!("webshield-cli/", env!("CARGO_PKG_VERSION")))
+            .build()
+            .context("failed to build the HTTP client")
+    }
+
     fn url(&self, path: impl AsRef<str>) -> String {
-        format!(
-            "{}/api/v1/{}",
-            self.base,
-            path.as_ref().trim_start_matches('/')
-        )
+        format!("{}/{}", self.base, path.as_ref().trim_start_matches('/'))
     }
 
     fn request(&self, method: Method, full_path: impl IntoUrl) -> RequestBuilder {
@@ -105,8 +106,8 @@ mod tests {
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    fn client(base: &str) -> Client {
-        Client::new(base.into(), "wsk_test".into()).unwrap()
+    fn client(base: &str) -> Client<'_> {
+        Client::new(base, "wsk_test").unwrap()
     }
 
     struct Things;

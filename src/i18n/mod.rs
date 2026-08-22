@@ -10,5 +10,5 @@
 pub mod locale;
 mod structs;
 
-pub use locale::{active_code, set_locale, LocaleCode};
+pub use locale::{set_locale, LocaleCode};
 pub use structs::Locale;

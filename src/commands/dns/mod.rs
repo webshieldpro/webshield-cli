@@ -15,11 +15,12 @@ use crate::api::models::dns::{
     ChangeType, DNSDomainRecords, DNSDomainRecordsPost, DnsRecords, DnssecDelete, DnssecGet,
     DnssecPost, DnssecResp, RRSet, RRSetList, RecordItem,
 };
+use crate::api::run::Run;
 use crate::api::table::ProgramRes;
 use crate::api::Client;
 use crate::commands::domains::resolve_domain;
 use crate::t;
-use crate::Context;
+use crate::util::context::Context;
 use anyhow::{bail, Result};
 use clap::Subcommand;
 use rr_type::RrType;
@@ -97,39 +98,41 @@ pub enum DnssecCommand {
     },
 }
 
-pub async fn run(ctx: &Context, cmd: DnsCommand) -> Result<ProgramRes> {
-    let client = ctx.new_client()?;
-    match cmd {
-        DnsCommand::List { domain, rr_type } => {
-            list(&client, &domain, rr_type).await.map(ProgramRes::from)
+impl Run for DnsCommand {
+    async fn run<'a>(self, ctx: &'a mut Context<'a>) -> Result<ProgramRes> {
+        let client = ctx.client()?;
+        match self {
+            Self::List { domain, rr_type } => {
+                list(client, &domain, rr_type).await.map(ProgramRes::from)
+            }
+            Self::Add {
+                domain,
+                name,
+                rr_type,
+                value,
+                ttl,
+            } => change(client, &domain, name, rr_type, &value, ttl, Op::Add)
+                .await
+                .map(ProgramRes::from),
+            Self::Set {
+                domain,
+                name,
+                rr_type,
+                value,
+                ttl,
+            } => change(client, &domain, name, rr_type, &value, ttl, Op::Set)
+                .await
+                .map(ProgramRes::from),
+            Self::Remove {
+                domain,
+                name,
+                rr_type,
+                value,
+            } => change(client, &domain, name, rr_type, &value, 0, Op::Remove)
+                .await
+                .map(ProgramRes::from),
+            Self::Dnssec(sub) => dnssec(client, sub).await.map(ProgramRes::from),
         }
-        DnsCommand::Add {
-            domain,
-            name,
-            rr_type,
-            value,
-            ttl,
-        } => change(&client, &domain, name, rr_type, &value, ttl, Op::Add)
-            .await
-            .map(ProgramRes::from),
-        DnsCommand::Set {
-            domain,
-            name,
-            rr_type,
-            value,
-            ttl,
-        } => change(&client, &domain, name, rr_type, &value, ttl, Op::Set)
-            .await
-            .map(ProgramRes::from),
-        DnsCommand::Remove {
-            domain,
-            name,
-            rr_type,
-            value,
-        } => change(&client, &domain, name, rr_type, &value, 0, Op::Remove)
-            .await
-            .map(ProgramRes::from),
-        DnsCommand::Dnssec(sub) => dnssec(&client, sub).await.map(ProgramRes::from),
     }
 }
 
@@ -139,7 +142,7 @@ enum Op {
     Remove,
 }
 
-async fn post_rrset(client: &Client, domain_id: i64, rrset: RRSet<'_>) -> Result<()> {
+async fn post_rrset(client: &Client<'_>, domain_id: i64, rrset: RRSet<'_>) -> Result<()> {
     client
         .send_json::<DNSDomainRecordsPost>(
             DnsRecords {
@@ -176,7 +179,7 @@ fn find_rrset<'a>(records: &'a [RRSet<'a>], fqdn: &str, rr_type: &str) -> Option
 }
 
 async fn list(
-    client: &Client,
+    client: &Client<'_>,
     domain: &str,
     rr_type: Option<RrType>,
 ) -> Result<RRSetList<'static>> {
@@ -229,7 +232,7 @@ fn dns_req_del<'a>(name: &'a str, ty: &'a str, stale: Vec<String>) -> RRSet<'a> 
 
 /// Single entry point for add/set/remove — they differ only in the rrsets they build.
 async fn change(
-    client: &Client,
+    client: &Client<'_>,
     domain: &str,
     name: String,
     rr_type: RrType,
@@ -310,7 +313,7 @@ async fn change(
     Ok(msg(&name, &ty, &d.name, &count.to_string()))
 }
 
-async fn dnssec(client: &Client, cmd: DnssecCommand) -> Result<DnssecResp> {
+async fn dnssec(client: &Client<'_>, cmd: DnssecCommand) -> Result<DnssecResp> {
     match cmd {
         DnssecCommand::Status { domain } => {
             let d = resolve_domain(client, &domain).await?;

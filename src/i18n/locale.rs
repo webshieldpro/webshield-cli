@@ -26,20 +26,19 @@ macro_rules! define_locale_codes {
 
     ($($lang:ident = $value:literal),* $(,)?) => {
 
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, ValueEnum, Serialize, Deserialize)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
         #[serde(rename_all = "lowercase")]
         pub enum LocaleCode {
-            #[default]
             $($lang,)*
         }
 
         impl LocaleCode {
 
-            pub const fn as_str(&self) -> &'static str {
-                match self {
-                    $(Self::$lang => $value,)*
-                }
-            }
+            // pub const fn as_str(&self) -> &'static str {
+            //     match self {
+            //         $(Self::$lang => $value,)*
+            //     }
+            // }
 
             pub const fn locale(&self) -> Locale {
                 match self {
@@ -69,20 +68,29 @@ define_locale_codes! {
     Ru = "ru",
 }
 
-static LOCALE: OnceLock<Locale> = OnceLock::new();
-static CODE: OnceLock<LocaleCode> = OnceLock::new();
+#[allow(clippy::derivable_impls)]
+impl Default for LocaleCode {
+    fn default() -> Self {
+        Self::En
+    }
+}
 
-/// Active locale. Falls back to the default one when nobody called `set_locale`
+static LOCALE: OnceLock<Locale> = OnceLock::new();
+
+#[cfg(test)]
+/// Active locale for tests. Falls back to the default one when nobody called `set_locale`
 /// (unit tests building the clap tree, for instance).
 pub fn locale() -> &'static Locale {
     LOCALE.get_or_init(|| LocaleCode::default().locale())
 }
 
-/// Code of the active locale — for showing and storing it, `en`/`ru`.
-pub fn active_code() -> LocaleCode {
-    *CODE.get_or_init(LocaleCode::default)
+#[cfg(not(test))]
+/// Active locale.
+pub fn locale() -> &'static Locale {
+    LOCALE.get().expect("locale not initialized")
 }
 
+/// Code of the active locale — for showing and storing it.
 /// Localized string: `t!(key)` for a fixed one, `t!(key, arg, …)` for a template.
 #[macro_export]
 macro_rules! t {
@@ -90,15 +98,16 @@ macro_rules! t {
         $crate::i18n::locale::locale().$name
     };
     ($name:ident, $($arg:expr),+ $(,)?) => {
-        ($crate::i18n::locale::locale().$name)($($arg),+)
+        $crate::t!($name)($($arg),+)
     };
 }
 
 /// Fixes the active locale. Only the first call wins — the language must be
 /// resolved before the clap tree is built, everything after that is a no-op.
 pub fn set_locale(code: LocaleCode) {
-    let _ = LOCALE.set(code.locale());
-    let _ = CODE.set(code);
+    LOCALE
+        .set(code.locale())
+        .expect("locale already initialized");
 }
 
 /// Language of an environment value like `ru_RU.UTF-8` or `en`.
@@ -133,6 +142,7 @@ pub fn prescan_flag(args: &[String], names: &[&str]) -> Option<String> {
     None
 }
 
+#[allow(dead_code)]
 /// Resolves the language: `--lang` → `WS_LANG` → profile → system locale → English.
 pub fn resolve(args: &[String], profile_lang: impl FnOnce() -> Option<LocaleCode>) -> LocaleCode {
     if let Some(code) = prescan_flag(args, &["--lang"]).and_then(|v| LocaleCode::try_from(&*v).ok())

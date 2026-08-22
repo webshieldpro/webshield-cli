@@ -3,11 +3,12 @@
 use crate::api::models::billing::{
     Billing, BillingBalance, BillingDomainUsage, BillingTariffs, BillingTariffsGet, BillingUsage,
 };
+use crate::api::run::Run;
 use crate::api::table::ProgramRes;
 use crate::api::Client;
 use crate::commands::domains::resolve_domain;
 use crate::t;
-use crate::Context;
+use crate::util::context::Context;
 use anyhow::Result;
 use clap::Subcommand;
 
@@ -27,26 +28,28 @@ pub enum BillingCommand {
     },
 }
 
-pub async fn run(ctx: &Context, cmd: BillingCommand) -> Result<ProgramRes> {
-    let client = ctx.new_client()?;
-    match cmd {
-        BillingCommand::Balance => balance(&client).await.map(ProgramRes::from),
-        BillingCommand::Usage { domain } => usage(&client, &domain).await.map(ProgramRes::from),
-        BillingCommand::Tariffs { domain } => tariffs(&client, &domain).await.map(ProgramRes::from),
+impl Run for BillingCommand {
+    async fn run<'a>(self, ctx: &'a mut Context<'a>) -> Result<ProgramRes> {
+        let client = ctx.client()?;
+        match self {
+            Self::Balance => balance(client).await.map(ProgramRes::from),
+            Self::Usage { domain } => usage(client, &domain).await.map(ProgramRes::from),
+            Self::Tariffs { domain } => tariffs(client, &domain).await.map(ProgramRes::from),
+        }
     }
 }
 
-async fn balance(client: &Client) -> Result<BillingBalance> {
+async fn balance(client: &Client<'_>) -> Result<BillingBalance> {
     client.send::<Billing>(()).await
 }
 
-async fn usage(client: &Client, domain: &str) -> Result<BillingDomainUsage> {
+async fn usage(client: &Client<'_>, domain: &str) -> Result<BillingDomainUsage> {
     let d = resolve_domain(client, domain).await?;
     let usage = client.send::<BillingUsage>(d.id).await?;
     Ok(usage)
 }
 
-async fn tariffs(client: &Client, domain: &str) -> Result<BillingTariffsGet> {
+async fn tariffs(client: &Client<'_>, domain: &str) -> Result<BillingTariffsGet> {
     let d = resolve_domain(client, domain).await?;
     let payload = client.send::<BillingTariffs>(d.id).await?;
 

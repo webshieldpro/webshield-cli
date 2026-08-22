@@ -14,10 +14,10 @@ pub enum OutputFormat {
     Json,
 }
 
-/// Formats a byte count with decimal units (999 B, 1.5 kB, …) — the same scale
+/// Formats a byte count with decimal units (999 B, 1.5 KB, …) — the same scale
 /// traffic and storage are billed in.
 pub fn fmt_size(bytes: i64) -> String {
-    const UNITS: [&str; 6] = ["B", "kB", "MB", "GB", "TB", "PB"];
+    const UNITS: [&str; 6] = ["B", "KB", "MB", "GB", "TB", "PB"];
 
     let mut v = bytes as f64;
     let mut i = 0;
@@ -26,9 +26,9 @@ pub fn fmt_size(bytes: i64) -> String {
         i += 1;
     }
     if i == 0 {
-        format!("{bytes} {}", UNITS[0])
+        format!("{} {}", bytes, UNITS[0])
     } else {
-        format!("{v:.1} {}", UNITS[i])
+        format!("{:.1} {}", v, UNITS[i])
     }
 }
 
@@ -46,7 +46,7 @@ pub fn print_table(headers: &[&str], rows: Vec<Vec<String>>) {
     for row in rows {
         table.add_row(row.iter().map(Cell::new));
     }
-    println!("{table}");
+    println!("{}", table);
 }
 
 pub fn success<T: Display>(msg: T) {
@@ -69,7 +69,7 @@ mod tests {
     fn fmt_size_uses_decimal_units() {
         assert_eq!(fmt_size(0), "0 B");
         assert_eq!(fmt_size(999), "999 B");
-        assert_eq!(fmt_size(1536), "1.5 kB");
+        assert_eq!(fmt_size(1536), "1.5 KB");
         assert_eq!(fmt_size(5 * 1000 * 1000), "5.0 MB");
     }
 }

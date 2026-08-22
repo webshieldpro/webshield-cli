@@ -13,19 +13,22 @@ use crate::api::models::sites::{
     SiteFilesPaths, SiteFilesUploadBatch, SiteGet, SitePublish, SitePublishBucketReq,
     SitePublishFromBucket, Sites, SitesList, SitesListInner, SitesResolve,
 };
+use crate::api::run::Run;
 use crate::api::table::ProgramRes;
 use crate::api::Client;
 use crate::commands::domains::resolve_domain;
 use crate::commands::util::Page;
 use crate::t;
+use crate::util::context::Context;
 use crate::util::output::{info, success};
-use crate::Context;
 use anyhow::{bail, Context as _, Result};
 use clap::Subcommand;
 use futures::stream::{self, StreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
 use md5::{Digest, Md5};
 use reqwest::multipart::{Form, Part};
+
+mod tests;
 
 // Batch limits (see server-side restrictions): 100 is the Django
 // DATA_UPLOAD_MAX_NUMBER_FILES ceiling, 32 MB is a sane size for one multipart.
@@ -80,50 +83,52 @@ pub enum SitesCommand {
     },
 }
 
-pub async fn run(ctx: &Context, cmd: SitesCommand) -> Result<ProgramRes> {
-    let client = ctx.new_client()?;
-    match cmd {
-        SitesCommand::List(page) => list(&client, page.into()).await.map(ProgramRes::from),
-        SitesCommand::Create { hostname, domain } => create(&client, &hostname, &domain)
-            .await
-            .map(ProgramRes::from),
-        SitesCommand::Publish {
-            hostname,
-            site_id,
-            dir,
-            dry_run,
-        } => {
-            // --site-id skips the site listing: a narrow sites:publish token has nothing else.
-            let id = match (site_id, hostname) {
-                (Some(id), _) => id,
-                (None, Some(host)) => resolve_site(&client, host).await?.id,
-                (None, None) => bail!(t!(publish_needs_site_ref)),
-            };
-            publish(&client, id, &dir, dry_run)
+impl Run for SitesCommand {
+    async fn run<'a>(self, ctx: &'a mut Context<'a>) -> Result<ProgramRes> {
+        let client = ctx.client()?;
+        match self {
+            Self::List(page) => list(client, page.into()).await.map(ProgramRes::from),
+            Self::Create { hostname, domain } => create(client, &hostname, &domain)
                 .await
-                .map(ProgramRes::from)
-        }
-        SitesCommand::PublishFromBucket {
-            hostname,
-            bucket,
-            path,
-        } => {
-            let site = resolve_site(&client, hostname).await?;
-            publish_from_bucket(&client, site.id, &bucket, &path)
-                .await
-                .map(ProgramRes::from)
-        }
-        SitesCommand::Files { hostname } => files(&client, hostname).await.map(ProgramRes::from),
-        SitesCommand::Disable { hostname } => {
-            let site = resolve_site(&client, hostname).await?;
-            client.send::<SiteDisable>(site.id).await?;
-            success(t!(site_disabled, &site.hostname));
-            Ok(ProgramRes::Idle)
+                .map(ProgramRes::from),
+            Self::Publish {
+                hostname,
+                site_id,
+                dir,
+                dry_run,
+            } => {
+                // --site-id skips the site listing: a narrow sites:publish token has nothing else.
+                let id = match (site_id, hostname) {
+                    (Some(id), _) => id,
+                    (None, Some(host)) => resolve_site(client, host).await?.id,
+                    (None, None) => bail!(t!(publish_needs_site_ref)),
+                };
+                publish(client, id, &dir, dry_run)
+                    .await
+                    .map(ProgramRes::from)
+            }
+            Self::PublishFromBucket {
+                hostname,
+                bucket,
+                path,
+            } => {
+                let site = resolve_site(client, hostname).await?;
+                publish_from_bucket(client, site.id, &bucket, &path)
+                    .await
+                    .map(ProgramRes::from)
+            }
+            Self::Files { hostname } => files(client, hostname).await.map(ProgramRes::from),
+            Self::Disable { hostname } => {
+                let site = resolve_site(client, hostname).await?;
+                client.send::<SiteDisable>(site.id).await?;
+                success(t!(site_disabled, &site.hostname));
+                Ok(ProgramRes::Idle)
+            }
         }
     }
 }
 
-async fn resolve_site(client: &Client, hostname: String) -> Result<SitesListInner> {
+async fn resolve_site(client: &Client<'_>, hostname: String) -> Result<SitesListInner> {
     let needle = hostname.trim().to_lowercase();
 
     let sites = client.send::<SitesResolve>(needle).await?;
@@ -135,11 +140,11 @@ async fn resolve_site(client: &Client, hostname: String) -> Result<SitesListInne
         .ok_or_else(|| anyhow::anyhow!(t!(not_found_site, &hostname)))
 }
 
-async fn list(client: &Client, page: u32) -> Result<SitesList> {
+async fn list(client: &Client<'_>, page: u32) -> Result<SitesList> {
     client.send::<Sites>(page).await
 }
 
-async fn create(client: &Client, hostname: &str, domain: &str) -> Result<SitesListInner> {
+async fn create(client: &Client<'_>, hostname: &str, domain: &str) -> Result<SitesListInner> {
     let d = resolve_domain(client, domain).await?;
     let site: SitesListInner = client
         .send_json::<SiteAdd>(
@@ -154,7 +159,7 @@ async fn create(client: &Client, hostname: &str, domain: &str) -> Result<SitesLi
     Ok(site)
 }
 
-async fn files(client: &Client, hostname: String) -> Result<FilesResponseSite> {
+async fn files(client: &Client<'_>, hostname: String) -> Result<FilesResponseSite> {
     let site = resolve_site(client, hostname).await?;
 
     let resp: FilesResponseSite = client.send::<SiteFiles>(site.id).await?;
@@ -169,7 +174,7 @@ const BUCKET_POLL_INTERVAL_SECS: u64 = 2;
 const BUCKET_POLL_MAX_ATTEMPTS: usize = 300; // ~10 minutes.
 
 async fn publish_from_bucket(
-    client: &Client,
+    client: &Client<'_>,
     site_id: i64,
     bucket: &str,
     path: &str,
@@ -218,7 +223,7 @@ async fn publish_from_bucket(
 
 // --- Publishing ---
 
-async fn publish(client: &Client, site_id: i64, dir: &Path, dry_run: bool) -> Result<()> {
+async fn publish(client: &Client<'_>, site_id: i64, dir: &Path, dry_run: bool) -> Result<()> {
     let root = std::fs::canonicalize(dir)
         .with_context(|| t!(dir_not_found, &dir.display().to_string()))?;
     if !root.is_dir() {
@@ -359,7 +364,11 @@ fn make_batches(files: Vec<(String, PathBuf)>) -> Vec<Vec<(String, PathBuf)>> {
     batches
 }
 
-async fn upload_all(client: &Client, site_id: i64, files: Vec<(String, PathBuf)>) -> Result<()> {
+async fn upload_all(
+    client: &Client<'_>,
+    site_id: i64,
+    files: Vec<(String, PathBuf)>,
+) -> Result<()> {
     let total = files.len() as u64;
     let batches = make_batches(files);
     let bar = ProgressBar::new(total);
@@ -385,7 +394,11 @@ async fn upload_all(client: &Client, site_id: i64, files: Vec<(String, PathBuf)>
     Ok(())
 }
 
-async fn upload_batch(client: &Client, site_id: i64, batch: Vec<(String, PathBuf)>) -> Result<()> {
+async fn upload_batch(
+    client: &Client<'_>,
+    site_id: i64,
+    batch: Vec<(String, PathBuf)>,
+) -> Result<()> {
     let mut form = Form::new();
     for (rel, abs) in &batch {
         let data = tokio::fs::read(abs)
@@ -406,7 +419,7 @@ async fn upload_batch(client: &Client, site_id: i64, batch: Vec<(String, PathBuf
     Ok(())
 }
 
-async fn delete_all(client: &Client, site_id: i64, paths: &[String]) -> Result<()> {
+async fn delete_all(client: &Client<'_>, site_id: i64, paths: &[String]) -> Result<()> {
     for chunk in paths.chunks(DELETE_BATCH) {
         client
             .send_json::<SiteFilesDeleteBatch>(
@@ -419,215 +432,4 @@ async fn delete_all(client: &Client, site_id: i64, paths: &[String]) -> Result<(
     }
     info(t!(deleted_files, &paths.len().to_string()));
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::{json, Value};
-    use wiremock::matchers::{body_json, method, path as url_path};
-    use wiremock::{Mock, MockServer, ResponseTemplate};
-
-    fn md5_hex(data: &[u8]) -> String {
-        let mut hasher = Md5::new();
-        hasher.update(data);
-        hex::encode(hasher.finalize())
-    }
-
-    fn touch(dir: &Path, rel: &str, content: &[u8]) -> PathBuf {
-        let abs = dir.join(rel);
-        if let Some(parent) = abs.parent() {
-            std::fs::create_dir_all(parent).unwrap();
-        }
-        std::fs::write(&abs, content).unwrap();
-        abs
-    }
-
-    #[test]
-    fn make_batches_splits_by_file_count() {
-        let dir = tempfile::tempdir().unwrap();
-        let files: Vec<(String, PathBuf)> = (0..250)
-            .map(|i| {
-                let rel = format!("f{i}.txt");
-                let abs = touch(dir.path(), &rel, b"");
-                (rel, abs)
-            })
-            .collect();
-        let batches = make_batches(files);
-        let sizes: Vec<usize> = batches.iter().map(Vec::len).collect();
-        assert_eq!(sizes, vec![100, 100, 50]);
-    }
-
-    #[test]
-    fn make_batches_splits_by_total_size() {
-        let dir = tempfile::tempdir().unwrap();
-        // Sparse 20 MB files: two of them exceed the 32 MB batch ceiling.
-        let files: Vec<(String, PathBuf)> = (0..3)
-            .map(|i| {
-                let rel = format!("big{i}.bin");
-                let abs = dir.path().join(&rel);
-                let f = std::fs::File::create(&abs).unwrap();
-                f.set_len(20 * 1024 * 1024).unwrap();
-                (rel, abs)
-            })
-            .collect();
-        let batches = make_batches(files);
-        let sizes: Vec<usize> = batches.iter().map(Vec::len).collect();
-        assert_eq!(sizes, vec![1, 1, 1]);
-    }
-
-    #[test]
-    fn make_batches_of_nothing_is_empty() {
-        assert!(make_batches(Vec::new()).is_empty());
-    }
-
-    fn client(server: &MockServer) -> Client {
-        Client::new(server.uri(), "wsk_test".into()).unwrap()
-    }
-
-    /// Mounts `GET files` returning the given draft state.
-    async fn mount_files(server: &MockServer, files: Value) {
-        Mock::given(method("GET"))
-            .and(url_path("/api/v1/static-sites/5/files"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "files": files })))
-            .mount(server)
-            .await;
-    }
-
-    #[tokio::test]
-    async fn publish_uploads_changed_deletes_vanished_then_publishes() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(dir.path(), "index.html", b"<html>new</html>");
-        touch(dir.path(), "css/app.css", b"body{}");
-        let same = b"unchanged";
-        touch(dir.path(), "same.txt", same);
-
-        let server = MockServer::start().await;
-        // Draft on the server: index.html is stale, same.txt matches its local
-        // MD5 (must be skipped), old.txt vanished locally (must be deleted).
-        mount_files(
-            &server,
-            json!([
-                {"path": "index.html", "etag": "0000stale0000"},
-                {"path": "same.txt", "etag": md5_hex(same)},
-                {"path": "old.txt", "etag": "aaaa"},
-            ]),
-        )
-        .await;
-        // index.html + css/app.css fit one batch → exactly one upload request.
-        Mock::given(method("POST"))
-            .and(url_path("/api/v1/static-sites/5/upload"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
-            .expect(1)
-            .mount(&server)
-            .await;
-        Mock::given(method("POST"))
-            .and(url_path("/api/v1/static-sites/5/delete-files"))
-            .and(body_json(json!({"paths": ["old.txt"]})))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
-            .expect(1)
-            .mount(&server)
-            .await;
-        Mock::given(method("POST"))
-            .and(url_path("/api/v1/static-sites/5/publish"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
-            .expect(1)
-            .mount(&server)
-            .await;
-
-        publish(&client(&server), 5, dir.path(), false)
-            .await
-            .unwrap();
-    }
-
-    #[tokio::test]
-    async fn publish_dry_run_only_reads() {
-        let dir = tempfile::tempdir().unwrap();
-        touch(dir.path(), "index.html", b"data");
-
-        let server = MockServer::start().await;
-        mount_files(&server, json!([])).await;
-        // No POST mocks are mounted: any write attempt would 404 and fail the run.
-        publish(&client(&server), 5, dir.path(), true)
-            .await
-            .unwrap();
-    }
-
-    #[tokio::test]
-    async fn publish_skips_snapshot_when_nothing_changed() {
-        let dir = tempfile::tempdir().unwrap();
-        let content = b"stable";
-        touch(dir.path(), "index.html", content);
-
-        let server = MockServer::start().await;
-        mount_files(
-            &server,
-            json!([{"path": "index.html", "etag": md5_hex(content)}]),
-        )
-        .await;
-        publish(&client(&server), 5, dir.path(), false)
-            .await
-            .unwrap();
-    }
-
-    #[tokio::test]
-    async fn publish_fails_on_missing_directory() {
-        let server = MockServer::start().await;
-        let missing = std::env::temp_dir().join("webshield-cli-no-such-dir-xyz");
-        assert!(publish(&client(&server), 5, &missing, true).await.is_err());
-    }
-
-    #[tokio::test]
-    async fn publish_from_bucket_posts_body_and_polls_until_active() {
-        let server = MockServer::start().await;
-        // The action posts {bucket, path} and returns 202 with status "publishing".
-        Mock::given(method("POST"))
-            .and(url_path("/api/v1/static-sites/5/publish-from-bucket"))
-            .and(body_json(json!({"bucket": "web", "path": "public/"})))
-            .respond_with(
-                ResponseTemplate::new(202)
-                    .set_body_json(json!({"id": 5, "hostname": "s", "status": "publishing"})),
-            )
-            .expect(1)
-            .mount(&server)
-            .await;
-        // Polling the site returns "active" → success.
-        Mock::given(method("GET"))
-            .and(url_path("/api/v1/static-sites/5"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(
-                json!({"id": 5, "hostname": "s", "status": "active", "content_version": 7}),
-            ))
-            .mount(&server)
-            .await;
-
-        publish_from_bucket(&client(&server), 5, "web", "public/")
-            .await
-            .unwrap();
-    }
-
-    #[tokio::test]
-    async fn publish_from_bucket_surfaces_publish_error() {
-        let server = MockServer::start().await;
-        Mock::given(method("POST"))
-            .and(url_path("/api/v1/static-sites/5/publish-from-bucket"))
-            .respond_with(
-                ResponseTemplate::new(202)
-                    .set_body_json(json!({"id": 5, "hostname": "s", "status": "publishing"})),
-            )
-            .mount(&server)
-            .await;
-        // Async publish failed: status reverted, publish_error carries the reason.
-        Mock::given(method("GET"))
-            .and(url_path("/api/v1/static-sites/5"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(
-                json!({"id": 5, "hostname": "s", "status": "disabled", "publish_error": "boom"}),
-            ))
-            .mount(&server)
-            .await;
-
-        let err = publish_from_bucket(&client(&server), 5, "web", "")
-            .await
-            .unwrap_err();
-        assert!(err.to_string().contains("boom"));
-    }
 }

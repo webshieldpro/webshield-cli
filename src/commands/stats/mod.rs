@@ -1,11 +1,12 @@
 //! Domain statistics and protection (scope `stats`, read-only).
 
 use crate::api::models::stats::{BanStats, StatBans, StatDomains, SummaryStats};
+use crate::api::run::Run;
 use crate::api::table::ProgramRes;
 use crate::api::Client;
 use crate::commands::domains::resolve_domain;
 use crate::t;
-use crate::Context;
+use crate::util::context::Context;
 use anyhow::Result;
 use clap::Subcommand;
 
@@ -27,19 +28,21 @@ pub enum StatsCommand {
     },
 }
 
-pub async fn run(ctx: &Context, cmd: StatsCommand) -> Result<ProgramRes> {
-    let client = ctx.new_client()?;
-    match cmd {
-        StatsCommand::Summary { domain, range } => summary(&client, &domain, &range)
-            .await
-            .map(ProgramRes::from),
-        StatsCommand::Bans { domain, range } => {
-            bans(&client, &domain, &range).await.map(ProgramRes::from)
+impl Run for StatsCommand {
+    async fn run<'a>(self, ctx: &'a mut Context<'a>) -> Result<ProgramRes> {
+        let client = ctx.client()?;
+        match self {
+            Self::Summary { domain, range } => {
+                summary(client, &domain, &range).await.map(ProgramRes::from)
+            }
+            Self::Bans { domain, range } => {
+                bans(client, &domain, &range).await.map(ProgramRes::from)
+            }
         }
     }
 }
 
-async fn summary(client: &Client, domain: &str, range: &str) -> Result<SummaryStats> {
+async fn summary(client: &Client<'_>, domain: &str, range: &str) -> Result<SummaryStats> {
     let d = resolve_domain(client, domain).await?;
     // The summary is complex (charts and aggregates) — print it as JSON.
     let payload: SummaryStats = client
@@ -48,7 +51,7 @@ async fn summary(client: &Client, domain: &str, range: &str) -> Result<SummarySt
     Ok(payload)
 }
 
-async fn bans(client: &Client, domain: &str, range: &str) -> Result<BanStats> {
+async fn bans(client: &Client<'_>, domain: &str, range: &str) -> Result<BanStats> {
     let d = resolve_domain(client, domain).await?;
 
     let payload: BanStats = client.send::<StatBans>((d.id, range.to_string())).await?;

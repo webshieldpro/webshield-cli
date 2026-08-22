@@ -3,6 +3,7 @@
 //! A profile stores the API base URL and (optionally) a personal `wsk_…` token.
 //! Source precedence during resolution: command-line flags/env → active profile.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -11,15 +12,6 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_API_URL: &str = "https://webshield.pro";
-
-#[derive(Debug, Default, Serialize, Deserialize)]
-pub struct Config {
-    /// Default profile name (when `--profile`/env is not set).
-    #[serde(default)]
-    pub default_profile: Option<String>,
-    #[serde(default)]
-    pub profiles: HashMap<String, Profile>,
-}
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Profile {
@@ -33,17 +25,25 @@ pub struct Profile {
     pub lang: Option<LocaleCode>,
 }
 
+#[derive(Debug, Default, Serialize, Deserialize)]
+pub struct ProfileConfig<'a> {
+    /// Default profile name (when `--profile`/env is not set).
+    #[serde(default)]
+    pub default_profile: Option<Cow<'a, str>>,
+    #[serde(default)]
+    pub profiles: HashMap<Cow<'a, str>, Profile>,
+}
 /// Path to the configuration file (`$XDG_CONFIG_HOME/webshield/config.toml`).
 pub fn config_path() -> Result<PathBuf> {
     let base = dirs::config_dir().context("failed to locate the configuration directory")?;
     Ok(base.join("webshield").join("config.toml"))
 }
 
-impl Config {
+impl<'a> ProfileConfig<'a> {
     pub fn load() -> Result<Self> {
         let path = config_path()?;
         if !path.exists() {
-            return Ok(Config::default());
+            return Ok(ProfileConfig::default());
         }
         let raw = std::fs::read_to_string(&path)
             .with_context(|| format!("failed to read {}", path.display()))?;
@@ -70,11 +70,12 @@ impl Config {
     }
 
     /// Active profile name, honoring the override.
-    pub fn active_profile_name(&self, override_name: Option<&str>) -> String {
-        override_name
-            .map(str::to_string)
+    pub fn active_profile_name(&self, override_name: Option<&'a str>) -> Cow<'a, str> {
+        let a = override_name
+            .map(Cow::Borrowed)
             .or_else(|| self.default_profile.clone())
-            .unwrap_or_else(|| "default".to_string())
+            .unwrap_or(Cow::Borrowed("default"));
+        a
     }
 
     pub fn profile(&self, name: &str) -> Option<&Profile> {
@@ -88,7 +89,7 @@ mod tests {
 
     #[test]
     fn parses_profiles_and_optional_fields() {
-        let cfg: Config = toml::from_str(
+        let cfg: ProfileConfig = toml::from_str(
             r#"
             default_profile = "work"
 
@@ -114,7 +115,7 @@ mod tests {
 
     #[test]
     fn active_profile_precedence() {
-        let mut cfg = Config::default();
+        let mut cfg = ProfileConfig::default();
         // No override, no default → literal "default".
         assert_eq!(cfg.active_profile_name(None), "default");
         cfg.default_profile = Some("work".into());
@@ -125,7 +126,7 @@ mod tests {
 
     #[test]
     fn token_is_omitted_from_serialized_config_when_absent() {
-        let mut cfg = Config::default();
+        let mut cfg = ProfileConfig::default();
         cfg.profiles.insert("p".into(), Profile::default());
         let raw = toml::to_string_pretty(&cfg).unwrap();
         assert!(!raw.contains("token"), "got: {raw}");

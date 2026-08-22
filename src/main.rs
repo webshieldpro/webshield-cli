@@ -4,20 +4,18 @@
 
 mod api;
 mod commands;
-mod config;
 mod i18n;
 mod util;
 
-use anyhow::{bail, Result};
+use crate::api::run::Run;
+use crate::api::table::ProgramRes;
+use crate::i18n::{set_locale, LocaleCode};
+use anyhow::Result;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
 use clap_complete_nushell::Nushell;
-
-use crate::api::table::ProgramRes;
-use crate::config::Config;
-use crate::i18n::locale::{prescan_flag, resolve};
-use crate::i18n::{set_locale, LocaleCode};
-use api::Client;
+use util::config::ProfileConfig;
+use util::context::Context;
 use util::output::OutputFormat;
 
 #[derive(Parser)]
@@ -92,69 +90,24 @@ enum CompletionShell {
     Nushell,
 }
 
-/// Resolved execution context: API access and output settings.
-pub struct Context {
-    profile: Option<String>,
-    api_url: Option<String>,
-    token: Option<String>,
-    pub lang: Option<LocaleCode>,
-    pub output: OutputFormat,
-    pub yes: bool,
-}
-
-impl Context {
-    pub fn profile_name(&self) -> Option<&str> {
-        self.profile.as_deref()
-    }
-
-    pub fn api_url_override(&self) -> Option<&str> {
-        self.api_url.as_deref()
-    }
-
-    pub fn has_token(&self) -> bool {
-        self.token.is_some()
-    }
-
-    /// Builds the HTTP client, resolving URL and token from flags/env/profile.
-    pub fn new_client(&self) -> Result<Client> {
-        let cfg = Config::load()?;
-        let profile_name = cfg.active_profile_name(self.profile.as_deref());
-        let profile = cfg.profile(&profile_name);
-
-        let api_url = self
-            .api_url
-            .clone()
-            .or_else(|| profile.and_then(|p| p.api_url.clone()))
-            .unwrap_or_else(|| config::DEFAULT_API_URL.to_string());
-
-        let token = self
-            .token
-            .clone()
-            .or_else(|| profile.and_then(|p| p.token.clone()));
-
-        let Some(token) = token else {
-            bail!(t!(no_token, &profile_name));
-        };
-        Client::new(api_url, token)
-    }
-}
-
 /// Language stored in the profile that is about to be used. Best effort: a broken
 /// config must not blow up before clap gets a chance to report the real problem.
-fn profile_lang(args: &[String]) -> Option<LocaleCode> {
-    let cfg = Config::load().ok()?;
-    let name = prescan_flag(args, &["--profile", "-p"])
-        .or_else(|| std::env::var("WS_PROFILE").ok())
-        .unwrap_or_else(|| cfg.active_profile_name(None));
-    cfg.profile(&name).and_then(|p| p.lang)
-}
+// fn profile_lang(args: &[String]) -> Option<LocaleCode> {
+//     let cfg = ProfileConfig::load().ok()?;
+//     let name = prescan_flag(args, &["--profile", "-p"])
+//         .or_else(|| std::env::var("WS_PROFILE").ok())
+//         .unwrap_or_else(|| cfg.active_profile_hash(None));
+//     cfg.profile(&name).and_then(|p| p.lang)
+// }
 
 #[tokio::main]
 async fn main() {
     // The language is needed before parsing: help is localized as well, and clap
     // reads the `t!` attributes while building the command tree.
-    let args: Vec<String> = std::env::args().collect();
-    set_locale(resolve(&args, || profile_lang(&args)));
+
+    // let args: Vec<String> = std::env::args().collect();
+    // set_locale(resolve(&args, || profile_lang(&args)));
+    set_locale(LocaleCode::En); // TODO
 
     if let Err(err) = run().await {
         eprintln!("{} {err:#}", console::style(t!(error_prefix)).red().bold());
@@ -165,23 +118,23 @@ async fn main() {
 async fn run() -> Result<()> {
     let cli = Cli::parse();
 
-    let ctx = Context {
-        profile: cli.profile,
-        api_url: cli.api_url,
-        token: cli.token,
-        lang: cli.lang,
-        output: cli.output,
-        yes: cli.yes,
-    };
+    let mut ctx = Context::new(
+        cli.profile.as_deref(),
+        cli.api_url,
+        cli.token,
+        cli.lang,
+        cli.yes,
+        ProfileConfig::load()?,
+    );
 
     let result: Result<ProgramRes> = match cli.command {
-        Command::Auth(cmd) => commands::auth::run(&ctx, cmd).await,
-        Command::Domains(cmd) => commands::domains::run(&ctx, cmd).await,
-        Command::Dns(cmd) => commands::dns::run(&ctx, cmd).await,
-        Command::Sites(cmd) => commands::sites::run(&ctx, cmd).await,
-        Command::Proxy(cmd) => commands::proxy::run(&ctx, cmd).await,
-        Command::Stats(cmd) => commands::stats::run(&ctx, cmd).await,
-        Command::Billing(cmd) => commands::billing::run(&ctx, cmd).await,
+        Command::Auth(cmd) => cmd.run(&mut ctx).await,
+        Command::Domains(cmd) => cmd.run(&mut ctx).await,
+        Command::Dns(cmd) => cmd.run(&mut ctx).await,
+        Command::Sites(cmd) => cmd.run(&mut ctx).await,
+        Command::Proxy(cmd) => cmd.run(&mut ctx).await,
+        Command::Stats(cmd) => cmd.run(&mut ctx).await,
+        Command::Billing(cmd) => cmd.run(&mut ctx).await,
         Command::Completion { shell } => {
             let mut cmd = Cli::command();
             let name = cmd.get_name().to_string();
@@ -213,13 +166,10 @@ async fn run() -> Result<()> {
 
     match result? {
         ProgramRes::Str(s) => println!("{s}"),
-        ProgramRes::Table(tb) => {
-            if ctx.output == OutputFormat::Table {
-                tb.display_as_table()
-            } else {
-                println!("{}", serde_json::to_string_pretty(&tb.as_json()?)?)
-            }
-        }
+        ProgramRes::Data(tb) => match cli.output {
+            OutputFormat::Table => tb.display_as_table(),
+            OutputFormat::Json => println!("{}", serde_json::to_string_pretty(&tb.as_json()?)?),
+        },
         ProgramRes::Idle => {}
     }
 
