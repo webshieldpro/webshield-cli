@@ -63,9 +63,7 @@ async fn login(ctx: &mut Context<'_>, token: Option<String>, api_url: String) ->
     profile.api_url = Some(api_url);
     profile.token = Some(token.clone());
     // Only an explicit `--lang` is persisted: an ambient locale must not stick.
-    if let Some(lang) = ctx.lang {
-        profile.lang = Some(lang);
-    }
+
     if ctx.cfg.default_profile.is_none() {
         ctx.cfg.default_profile = Some(name.clone());
     }

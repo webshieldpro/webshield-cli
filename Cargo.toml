@@ -37,6 +37,7 @@ comfy-table = "7"
 console = "0.15"
 rpassword = "7"
 futures = "0.3"
+sys-locale = "0.3.2"
 
 
 [dev-dependencies]

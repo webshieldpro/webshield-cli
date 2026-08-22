@@ -1,5 +1,4 @@
 use crate::api::Client;
-use crate::i18n::LocaleCode;
 use crate::t;
 use crate::util::config;
 use crate::util::config::{Profile, ProfileConfig};
@@ -11,7 +10,6 @@ pub struct Context<'c> {
     profile: Option<&'c str>,
     api_url: Option<String>,
     token: Option<String>,
-    pub lang: Option<LocaleCode>,
     pub yes: bool,
     pub cfg: ProfileConfig<'c>,
     client: Option<Client<'c>>,
@@ -22,7 +20,6 @@ impl<'c> Context<'c> {
         profile: Option<&'c str>,
         api_url: Option<String>,
         token: Option<String>,
-        lang: Option<LocaleCode>,
         yes: bool,
         cfg: ProfileConfig<'c>,
     ) -> Self {
@@ -30,7 +27,6 @@ impl<'c> Context<'c> {
             profile,
             api_url,
             token,
-            lang,
             yes,
             cfg,
             client: None,

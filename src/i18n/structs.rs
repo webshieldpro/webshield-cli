@@ -22,7 +22,6 @@ pub struct Locale {
     pub arg_profile: &'static str,
     pub arg_api_url: &'static str,
     pub arg_token: &'static str,
-    pub arg_lang: &'static str,
     pub arg_output: &'static str,
     pub arg_output_table: &'static str,
     pub arg_output_json: &'static str,

@@ -47,14 +47,15 @@ pub(crate) async fn check_status(resp: Response) -> Result<Response> {
     if status.is_success() {
         return Ok(resp);
     }
-    let body = resp.text().await.unwrap_or_default();
-    let detail = extract_detail(&body).unwrap_or(body);
+    let body = resp.bytes().await.unwrap_or_default();
+    let detail =
+        extract_detail(&body).unwrap_or_else(|| String::from_utf8_lossy(body.as_ref()).to_string());
     Err(anyhow::Error::new(HttpError { status, detail }))
 }
 
 /// Extracts `detail` or joins DRF serializer field errors into a single line.
-fn extract_detail(body: &str) -> Option<String> {
-    let value: Value = serde_json::from_str(body).ok()?;
+fn extract_detail(body: impl AsRef<[u8]>) -> Option<String> {
+    let value: Value = serde_json::from_slice(body.as_ref()).ok()?;
     let obj = value.as_object()?;
     if let Some(detail) = obj.get("detail").and_then(Value::as_str) {
         return Some(detail.to_string());

@@ -62,16 +62,28 @@ macro_rules! define_locale_codes {
     }
 }
 
-// The first variant is the default one (English).
 define_locale_codes! {
     En = "en",
     Ru = "ru",
 }
 
-#[allow(clippy::derivable_impls)]
+fn parse_locale_str(l: &str) -> Option<&str> {
+    if l.is_empty() {
+        None
+    } else {
+        l.split(&['_', '-', '.']).next()
+    }
+}
+
+fn get_locale_code() -> Option<LocaleCode> {
+    let locale = sys_locale::get_locale()?;
+    let code = parse_locale_str(&locale)?;
+    LocaleCode::try_from(code).ok()
+}
+
 impl Default for LocaleCode {
     fn default() -> Self {
-        Self::En
+        get_locale_code().unwrap_or(Self::En)
     }
 }
 
@@ -110,62 +122,6 @@ pub fn set_locale(code: LocaleCode) {
         .expect("locale already initialized");
 }
 
-/// Language of an environment value like `ru_RU.UTF-8` or `en`.
-fn from_env_value(value: &str) -> Option<LocaleCode> {
-    let v = value.trim().to_lowercase();
-    if v.is_empty() || v == "c" || v == "posix" {
-        return None;
-    }
-    match v.split(['_', '-', '.']).next().unwrap_or_default() {
-        "ru" | "rus" | "russian" => Some(LocaleCode::Ru),
-        "en" | "eng" | "english" => Some(LocaleCode::En),
-        // A known-but-unsupported locale still means "not English by accident".
-        _ => Some(LocaleCode::En),
-    }
-}
-
-/// Pre-extracts a flag value from the raw arguments: help has to be printed in the
-/// right language, and by then clap has not parsed anything yet. `names` lists the
-/// spellings of one flag, e.g. `["--profile", "-p"]`.
-pub fn prescan_flag(args: &[String], names: &[&str]) -> Option<String> {
-    let mut it = args.iter();
-    while let Some(a) = it.next() {
-        for name in names {
-            if a == name {
-                return it.next().cloned();
-            }
-            if let Some(v) = a.strip_prefix(&format!("{name}=")) {
-                return Some(v.to_string());
-            }
-        }
-    }
-    None
-}
-
-#[allow(dead_code)]
-/// Resolves the language: `--lang` → `WS_LANG` → profile → system locale → English.
-pub fn resolve(args: &[String], profile_lang: impl FnOnce() -> Option<LocaleCode>) -> LocaleCode {
-    if let Some(code) = prescan_flag(args, &["--lang"]).and_then(|v| LocaleCode::try_from(&*v).ok())
-    {
-        return code;
-    }
-    if let Some(code) = std::env::var("WS_LANG")
-        .ok()
-        .and_then(|v| from_env_value(&v))
-    {
-        return code;
-    }
-    if let Some(code) = profile_lang() {
-        return code;
-    }
-    for key in ["LC_ALL", "LC_MESSAGES", "LANG"] {
-        if let Some(code) = std::env::var(key).ok().and_then(|v| from_env_value(&v)) {
-            return code;
-        }
-    }
-    LocaleCode::default()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -178,36 +134,11 @@ mod tests {
     }
 
     #[test]
-    fn env_values_carry_a_region_and_charset() {
-        assert_eq!(from_env_value("ru_RU.UTF-8"), Some(LocaleCode::Ru));
-        assert_eq!(from_env_value("en-GB"), Some(LocaleCode::En));
-        // "No locale set" must not shadow the next source in the chain.
-        assert_eq!(from_env_value("C"), None);
-        assert_eq!(from_env_value(""), None);
-    }
-
-    #[test]
-    fn flag_is_prescanned_in_both_spellings() {
-        let args = |s: &str| s.split(' ').map(str::to_string).collect::<Vec<_>>();
-        assert_eq!(
-            prescan_flag(&args("webshield --lang ru domains list"), &["--lang"]),
-            Some("ru".to_string())
-        );
-        assert_eq!(
-            prescan_flag(&args("webshield --lang=ru domains list"), &["--lang"]),
-            Some("ru".to_string())
-        );
-        assert_eq!(
-            prescan_flag(&args("webshield domains list"), &["--lang"]),
-            None
-        );
-        // A short spelling counts too — `-p work` selects the profile.
-        assert_eq!(
-            prescan_flag(
-                &args("webshield -p work domains list"),
-                &["--profile", "-p"]
-            ),
-            Some("work".to_string())
-        );
+    fn parses_locales() {
+        assert_eq!(parse_locale_str("ru_RU.UTF-8"), Some("ru"));
+        assert_eq!(parse_locale_str("en-US"), Some("en"));
+        assert_eq!(parse_locale_str("en_US"), Some("en"));
+        assert_eq!(parse_locale_str("fr"), Some("fr"));
+        assert_eq!(parse_locale_str(""), None);
     }
 }

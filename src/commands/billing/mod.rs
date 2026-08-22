@@ -52,6 +52,5 @@ async fn usage(client: &Client<'_>, domain: &str) -> Result<BillingDomainUsage> 
 async fn tariffs(client: &Client<'_>, domain: &str) -> Result<BillingTariffsGet> {
     let d = resolve_domain(client, domain).await?;
     let payload = client.send::<BillingTariffs>(d.id).await?;
-
     Ok(payload)
 }

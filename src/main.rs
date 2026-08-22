@@ -9,7 +9,7 @@ mod util;
 
 use crate::api::run::Run;
 use crate::api::table::ProgramRes;
-use crate::i18n::{set_locale, LocaleCode};
+use crate::i18n::set_locale;
 use anyhow::Result;
 use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
 use clap_complete::Shell;
@@ -35,9 +35,8 @@ struct Cli {
     #[arg(long, global = true, env = "WS_TOKEN", hide_env_values = true, help = t!(arg_token))]
     token: Option<String>,
 
-    #[arg(long, global = true, value_enum, help = t!(arg_lang))]
-    lang: Option<LocaleCode>,
-
+    // #[arg(long, global = true, value_enum, help = t!(arg_lang))]
+    // lang: Option<LocaleCode>,
     #[arg(long, short = 'o', global = true, value_enum, default_value_t = OutputFormat::Table, help = t!(arg_output))]
     output: OutputFormat,
 
@@ -102,13 +101,6 @@ enum CompletionShell {
 
 #[tokio::main]
 async fn main() {
-    // The language is needed before parsing: help is localized as well, and clap
-    // reads the `t!` attributes while building the command tree.
-
-    // let args: Vec<String> = std::env::args().collect();
-    // set_locale(resolve(&args, || profile_lang(&args)));
-    set_locale(LocaleCode::En); // TODO
-
     if let Err(err) = run().await {
         eprintln!("{} {err:#}", console::style(t!(error_prefix)).red().bold());
         std::process::exit(1);
@@ -116,16 +108,13 @@ async fn main() {
 }
 
 async fn run() -> Result<()> {
+    let cfg = ProfileConfig::load()?;
+
+    set_locale(cfg.lang.unwrap_or_default());
+
     let cli = Cli::parse();
 
-    let mut ctx = Context::new(
-        cli.profile.as_deref(),
-        cli.api_url,
-        cli.token,
-        cli.lang,
-        cli.yes,
-        ProfileConfig::load()?,
-    );
+    let mut ctx = Context::new(cli.profile.as_deref(), cli.api_url, cli.token, cli.yes, cfg);
 
     let result: Result<ProgramRes> = match cli.command {
         Command::Auth(cmd) => cmd.run(&mut ctx).await,
