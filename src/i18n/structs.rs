@@ -117,6 +117,7 @@ pub struct Locale {
     // auth.
     pub token_prompt: &'static str,
     pub token_warn_prefix: &'static str,
+    pub token_empty: &'static str,
     pub lbl_profile: &'static str,
     pub lbl_api_url: &'static str,
     pub lbl_token: &'static str,

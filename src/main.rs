@@ -3,6 +3,7 @@
 //! `--lang`/`WS_LANG`/profile/system locale (see `i18n`).
 
 mod api;
+mod cmd;
 mod commands;
 mod i18n;
 mod util;
@@ -11,93 +12,13 @@ use crate::api::run::Run;
 use crate::api::table::ProgramRes;
 use crate::i18n::set_locale;
 use anyhow::Result;
-use clap::{CommandFactory, Parser, Subcommand, ValueEnum};
+use clap::{CommandFactory, Parser};
 use clap_complete::Shell;
 use clap_complete_nushell::Nushell;
+use cmd::{Cli, Command, CompletionShell};
 use util::config::ProfileConfig;
 use util::context::Context;
 use util::output::OutputFormat;
-
-#[derive(Parser)]
-#[command(
-    name = "webshield",
-    version,
-    about = t!(app_about),
-    propagate_version = true
-)]
-struct Cli {
-    #[arg(long, short = 'p', global = true, env = "WS_PROFILE", help = t!(arg_profile))]
-    profile: Option<String>,
-
-    #[arg(long, global = true, env = "WS_API_URL", help = t!(arg_api_url))]
-    api_url: Option<String>,
-
-    #[arg(long, global = true, env = "WS_TOKEN", hide_env_values = true, help = t!(arg_token))]
-    token: Option<String>,
-
-    // #[arg(long, global = true, value_enum, help = t!(arg_lang))]
-    // lang: Option<LocaleCode>,
-    #[arg(long, short = 'o', global = true, value_enum, default_value_t = OutputFormat::Table, help = t!(arg_output))]
-    output: OutputFormat,
-
-    #[arg(long, short = 'y', global = true, help = t!(arg_yes))]
-    yes: bool,
-
-    #[command(subcommand)]
-    command: Command,
-}
-
-#[derive(Subcommand)]
-enum Command {
-    #[command(subcommand)]
-    #[command(about = t!(cmd_auth))]
-    Auth(commands::auth::AuthCommand),
-    #[command(subcommand)]
-    #[command(about = t!(cmd_domains))]
-    Domains(commands::domains::DomainsCommand),
-    #[command(subcommand)]
-    #[command(about = t!(cmd_dns))]
-    Dns(commands::dns::DnsCommand),
-    #[command(subcommand)]
-    #[command(about = t!(cmd_sites))]
-    Sites(commands::sites::SitesCommand),
-    #[command(subcommand)]
-    #[command(about = t!(cmd_proxy))]
-    Proxy(commands::proxy::ProxyCommand),
-    #[command(subcommand)]
-    #[command(about = t!(cmd_stats))]
-    Stats(commands::stats::StatsCommand),
-    #[command(subcommand)]
-    #[command(about = t!(cmd_billing))]
-    Billing(commands::billing::BillingCommand),
-    #[command(about = t!(cmd_completion))]
-    Completion {
-        #[arg(help = t!(arg_shell))]
-        shell: CompletionShell,
-    },
-}
-
-/// Shells we can emit completions for. Wraps clap_complete's built-in `Shell`
-/// and adds Nushell, whose generator lives in a separate crate.
-#[derive(Clone, Copy, ValueEnum)]
-enum CompletionShell {
-    Bash,
-    Zsh,
-    Fish,
-    Powershell,
-    Elvish,
-    Nushell,
-}
-
-/// Language stored in the profile that is about to be used. Best effort: a broken
-/// config must not blow up before clap gets a chance to report the real problem.
-// fn profile_lang(args: &[String]) -> Option<LocaleCode> {
-//     let cfg = ProfileConfig::load().ok()?;
-//     let name = prescan_flag(args, &["--profile", "-p"])
-//         .or_else(|| std::env::var("WS_PROFILE").ok())
-//         .unwrap_or_else(|| cfg.active_profile_hash(None));
-//     cfg.profile(&name).and_then(|p| p.lang)
-// }
 
 #[tokio::main]
 async fn main() {
@@ -117,13 +38,7 @@ async fn run() -> Result<()> {
     let mut ctx = Context::new(cli.profile.as_deref(), cli.api_url, cli.token, cli.yes, cfg);
 
     let result: Result<ProgramRes> = match cli.command {
-        Command::Auth(cmd) => cmd.run(&mut ctx).await,
-        Command::Domains(cmd) => cmd.run(&mut ctx).await,
-        Command::Dns(cmd) => cmd.run(&mut ctx).await,
-        Command::Sites(cmd) => cmd.run(&mut ctx).await,
-        Command::Proxy(cmd) => cmd.run(&mut ctx).await,
-        Command::Stats(cmd) => cmd.run(&mut ctx).await,
-        Command::Billing(cmd) => cmd.run(&mut ctx).await,
+        Command::RunCommand(cmd) => cmd.run(&mut ctx).await,
         Command::Completion { shell } => {
             let mut cmd = Cli::command();
             let name = cmd.get_name().to_string();
@@ -163,16 +78,4 @@ async fn run() -> Result<()> {
     }
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// clap's self-check: catches conflicting flags, bad defaults and other
-    /// structural mistakes in the whole command tree at test time.
-    #[test]
-    fn cli_structure_is_valid() {
-        Cli::command().debug_assert();
-    }
 }

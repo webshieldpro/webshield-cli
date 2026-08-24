@@ -49,7 +49,12 @@ async fn login(ctx: &mut Context<'_>, token: Option<String>, api_url: String) ->
         Some(t) => t,
         None => rpassword::prompt_password(t!(token_prompt)).context("failed to read the token")?,
     };
-    let token = token.trim().to_string();
+    let token = token.trim();
+
+    if token.is_empty() {
+        info(t!(token_empty));
+        return Ok(());
+    }
 
     if !token.starts_with("wsk_") {
         info(t!(token_warn_prefix));
@@ -57,11 +62,11 @@ async fn login(ctx: &mut Context<'_>, token: Option<String>, api_url: String) ->
 
     let name = ctx.cfg.active_profile_name(ctx.profile_name());
 
-    let verdict = probe(&api_url, &token).await;
+    let verdict = probe(&api_url, token).await;
 
     let profile = ctx.cfg.profiles.entry(name.clone()).or_default();
     profile.api_url = Some(api_url);
-    profile.token = Some(token.clone());
+    profile.token = Some(token.to_string());
     // Only an explicit `--lang` is persisted: an ambient locale must not stick.
 
     if ctx.cfg.default_profile.is_none() {
@@ -116,10 +121,7 @@ async fn status<'a>(ctx: &'a mut Context<'a>) -> Result<()> {
 
         // let a: &str = t!(access_ok);
         let verdict: StyledObject<Cow<'static, str>> = match resp {
-            Ok(_) => {
-                // let access: &str = t!(access_ok);
-                style(t!(access_ok).into()).green()
-            }
+            Ok(_) => style(t!(access_ok).into()).green(),
             // The HTTP code is recovered from the typed error in the anyhow chain.
             Err(err) => match err
                 .downcast_ref::<HttpError>()

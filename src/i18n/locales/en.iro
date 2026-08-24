@@ -100,6 +100,7 @@ confirm_cancelled: "cancelled by user",
 
 token_prompt: "Token wsk_…: ",
 token_warn_prefix: "warning: a token usually starts with `wsk_`.",
+token_empty: "The entered token is empty",
 lbl_profile: "Profile:",
 lbl_api_url: "API URL:",
 lbl_token: "Token:  ",
