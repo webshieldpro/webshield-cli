@@ -27,6 +27,7 @@ pub struct SetImpl {
 }
 
 #[derive(Subcommand)]
+#[command(about = t!(cmd_proxy))]
 pub enum ProxyCommand {
     #[command(about = t!(cmd_proxy_list))]
     List(Page),

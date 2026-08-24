@@ -18,6 +18,7 @@ use console::{style, StyledObject};
 use std::borrow::Cow;
 
 #[derive(Subcommand)]
+#[command(about = t!(cmd_auth))]
 pub enum AuthCommand {
     #[command(about = t!(cmd_auth_login))]
     Login {

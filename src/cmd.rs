@@ -43,7 +43,7 @@ macro_rules! define_run_command_enum {
         #[derive(Subcommand)]
         pub enum RunCommand {
             $(
-                $(#[$variant_meta])*
+                #[command(subcommand)]
                 $variant($ty),
             )*
         }
@@ -61,33 +61,21 @@ macro_rules! define_run_command_enum {
 }
 
 define_run_command_enum! {
-    #[command(subcommand)]
-    #[command(about = t!(cmd_auth))]
     Auth(commands::auth::AuthCommand),
 
-    #[command(subcommand)]
-    #[command(about = t!(cmd_domains))]
     Domains(commands::domains::DomainsCommand),
 
-    #[command(subcommand)]
-    #[command(about = t!(cmd_dns))]
     Dns(commands::dns::DnsCommand),
 
-    #[command(subcommand)]
-    #[command(about = t!(cmd_sites))]
     Sites(commands::sites::SitesCommand),
 
-    #[command(subcommand)]
-    #[command(about = t!(cmd_proxy))]
     Proxy(commands::proxy::ProxyCommand),
 
-    #[command(subcommand)]
-    #[command(about = t!(cmd_stats))]
     Stats(commands::stats::StatsCommand),
 
-    #[command(subcommand)]
-    #[command(about = t!(cmd_billing))]
     Billing(commands::billing::BillingCommand),
+
+    Lang(commands::lang::LanguageCommand),
 }
 
 #[derive(Subcommand)]

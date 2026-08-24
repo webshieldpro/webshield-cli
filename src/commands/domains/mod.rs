@@ -16,6 +16,7 @@ use anyhow::Result;
 use clap::Subcommand;
 
 #[derive(Subcommand)]
+#[command(about = t!(cmd_domains))]
 pub enum DomainsCommand {
     #[command(about = t!(cmd_domains_list))]
     List(Page),

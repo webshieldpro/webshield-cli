@@ -26,7 +26,7 @@ macro_rules! define_locale_codes {
 
     ($($lang:ident = $value:literal),* $(,)?) => {
 
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Serialize, Deserialize)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
         #[serde(rename_all = "lowercase")]
         pub enum LocaleCode {
             $($lang,)*

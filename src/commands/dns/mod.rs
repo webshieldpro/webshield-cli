@@ -27,6 +27,7 @@ use rr_type::RrType;
 use std::borrow::Cow;
 
 #[derive(Subcommand)]
+#[command(about = t!(cmd_dns))]
 pub enum DnsCommand {
     #[command(about = t!(cmd_dns_list))]
     List {

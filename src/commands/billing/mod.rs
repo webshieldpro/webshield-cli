@@ -13,6 +13,7 @@ use anyhow::Result;
 use clap::Subcommand;
 
 #[derive(Subcommand)]
+#[command(about = t!(cmd_billing))]
 pub enum BillingCommand {
     #[command(about = t!(cmd_billing_balance))]
     Balance,

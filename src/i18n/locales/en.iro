@@ -89,6 +89,10 @@ cmd_billing_balance: "Account balance per currency",
 cmd_billing_usage: "Traffic usage of a domain vs the tariff limit",
 cmd_billing_tariffs: "Current and available tariffs of a domain",
 
+cmd_lang: "lang",
+cmd_lang_set: "Allows you to set one of the available languages in which messages will be displayed",
+cmd_lang_unset: "Unsets the current language. The system language will be used from now on",
+
 yes: "yes",
 no: "no",
 dash: "—",

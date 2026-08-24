@@ -11,6 +11,7 @@ use anyhow::Result;
 use clap::Subcommand;
 
 #[derive(Subcommand)]
+#[command(about = t!(cmd_stats))]
 pub enum StatsCommand {
     #[command(about = t!(cmd_stats_summary))]
     Summary {
