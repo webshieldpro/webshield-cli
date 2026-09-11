@@ -16,25 +16,36 @@ pub struct ProxyInfo {
     pub redirect_target: Option<String>,
     #[arg(long, help = t!(arg_proxy_ssl))]
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "ssl_required")]
     pub ssl: Option<bool>,
     #[arg(long, help = t!(arg_proxy_bot_protection))]
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "bot_protection_enabled")]
     pub bot_protection: Option<bool>,
     #[arg(long, help = t!(arg_proxy_captcha))]
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "captcha_check_enabled")]
     pub captcha: Option<bool>,
     #[arg(long, help = t!(arg_proxy_http2))]
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "http2_enabled")]
     pub http2: Option<bool>,
     #[arg(long, help = t!(arg_proxy_http3))]
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "http3_enabled")]
     pub http3: Option<bool>,
     #[arg(long, help = t!(arg_proxy_max_body))]
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "max_body_size_mb")]
     pub max_body_mb: Option<i64>,
     #[arg(long, help = t!(arg_proxy_block_bots))]
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "blocked_bots")]
     pub block_bots: Option<Vec<String>>,
+    #[arg(long, help = t!(arg_proxy_html_cache))]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "html_cache_enabled")]
+    pub html_cache: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -91,6 +102,23 @@ impl RequestDesc for ProxyNew {
 
     fn get_url(_: ()) -> impl AsRef<str> {
         "nginx-configs"
+    }
+
+    fn method() -> Method {
+        Method::POST
+    }
+}
+
+/// Purge the edge cache of a host (bumps the host cache generation server-side).
+pub struct ProxyPurgeCache;
+
+impl RequestDesc for ProxyPurgeCache {
+    type Params = i64;
+    type Request = ();
+    type Response = serde::de::IgnoredAny;
+
+    fn get_url(id: Self::Params) -> impl AsRef<str> {
+        format!("nginx-configs/{}/purge-cache", id)
     }
 
     fn method() -> Method {

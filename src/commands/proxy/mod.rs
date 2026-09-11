@@ -2,7 +2,7 @@
 
 use crate::api::models::proxy::{
     Proxies, Proxy, ProxyData, ProxyDecl, ProxyDelete, ProxyInfo, ProxyNew, ProxyPatch,
-    ProxyResolve,
+    ProxyPurgeCache, ProxyResolve,
 };
 use crate::api::run::Run;
 use crate::api::table::ProgramRes;
@@ -43,6 +43,11 @@ pub enum ProxyCommand {
         #[arg(help = t!(arg_hostname))]
         hostname: String,
     },
+    #[command(name = "purge-cache", about = t!(cmd_proxy_purge_cache))]
+    PurgeCache {
+        #[arg(help = t!(arg_hostname))]
+        hostname: String,
+    },
 }
 
 impl Run for ProxyCommand {
@@ -53,6 +58,13 @@ impl Run for ProxyCommand {
             Self::List(page) => list(client, page.into()).await.map(ProgramRes::from),
             Self::Get { hostname } => resolve_proxy(client, &hostname).await.map(ProgramRes::from),
             Self::Set(s) => set(client, s).await.map(ProgramRes::from),
+
+            Self::PurgeCache { hostname } => {
+                let cfg = resolve_proxy(client, &hostname).await?;
+
+                client.send::<ProxyPurgeCache>(cfg.id).await?;
+                Ok(ProgramRes::from(t!(proxy_cache_purged, &hostname)))
+            }
 
             Self::Remove { hostname } => {
                 let cfg = resolve_proxy(client, &hostname).await?;

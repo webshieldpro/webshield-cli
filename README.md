@@ -81,6 +81,8 @@ Copy-paste territory. Swap the names, you know the drill.
     webshield proxy set app.example.com --domain example.com --bot-protection true --ssl true
     webshield proxy set old.example.com --domain example.com \
         --mode redirect --redirect-target example.com
+    webshield proxy set shop.example.com --domain example.com --html-cache true  # cache pages too
+    webshield proxy purge-cache app.example.com                  # drop everything cached for the host
 
     # Analytics
     webshield stats summary example.com --range 7d

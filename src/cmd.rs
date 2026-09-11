@@ -1,5 +1,6 @@
 use crate::api::run::Run;
 use crate::api::table::ProgramRes;
+use crate::i18n::locale::LocaleCode;
 use crate::util::context::Context;
 use crate::util::output::OutputFormat;
 use crate::{commands, t};
@@ -27,6 +28,11 @@ pub struct Cli {
 
     #[arg(long, short = 'y', global = true, help = t!(arg_yes))]
     pub(crate) yes: bool,
+
+    // The value is already read in `main` before parsing (the locale is needed before
+    // the command tree is built); this declaration exists for help and validation.
+    #[arg(long, global = true, env = "WS_LANG", value_enum, help = t!(arg_lang))]
+    pub(crate) lang: Option<LocaleCode>,
 
     #[command(subcommand)]
     pub(crate) command: Command,

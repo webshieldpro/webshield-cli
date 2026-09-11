@@ -10,6 +10,7 @@ mod util;
 
 use crate::api::run::Run;
 use crate::api::table::ProgramRes;
+use crate::i18n::locale::LocaleCode;
 use crate::i18n::set_locale;
 use anyhow::Result;
 use clap::{CommandFactory, Parser};
@@ -28,10 +29,38 @@ async fn main() {
     }
 }
 
+/// Language from argv: `--lang ru` or `--lang=ru`.
+///
+/// Parsed by hand because clap help strings are built through `t!`: the locale must
+/// be fixed before `Cli::parse()` runs, so clap cannot be the one to read the flag.
+/// An invalid value is ignored here — clap reports it during the actual parse.
+fn lang_from_args() -> Option<LocaleCode> {
+    let mut args = std::env::args();
+    while let Some(arg) = args.next() {
+        let value = match arg.strip_prefix("--lang") {
+            Some("") => args.next()?,
+            Some(rest) => rest.strip_prefix('=')?.to_string(),
+            None => continue,
+        };
+        return LocaleCode::try_from(value.as_str()).ok();
+    }
+    None
+}
+
+fn lang_from_env() -> Option<LocaleCode> {
+    LocaleCode::try_from(std::env::var("WS_LANG").ok()?.as_str()).ok()
+}
+
 async fn run() -> Result<()> {
     let cfg = ProfileConfig::load()?;
 
-    set_locale(cfg.lang.unwrap_or_default());
+    // Source order: flag -> environment -> profile -> system locale -> English.
+    set_locale(
+        lang_from_args()
+            .or_else(lang_from_env)
+            .or(cfg.lang)
+            .unwrap_or_default(),
+    );
 
     let cli = Cli::parse();
 

@@ -56,6 +56,7 @@ locale_fields! {
     arg_output_table,
     arg_output_json,
     arg_yes,
+    arg_lang,
     arg_page,
     arg_shell,
     arg_domain,
@@ -115,6 +116,7 @@ locale_fields! {
     cmd_proxy_get,
     cmd_proxy_set,
     cmd_proxy_remove,
+    cmd_proxy_purge_cache,
     arg_proxy_domain,
     arg_proxy_mode,
     arg_proxy_redirect_target,
@@ -125,6 +127,7 @@ locale_fields! {
     arg_proxy_http3,
     arg_proxy_max_body,
     arg_proxy_block_bots,
+    arg_proxy_html_cache,
 
     // Help: stats and billing.
     cmd_stats_summary,
@@ -238,6 +241,7 @@ locale_fields! {
     proxy_created(host),
     proxy_updated(host),
     proxy_removed(host),
+    proxy_cache_purged(host),
     confirm_remove_proxy(host),
     not_found_proxy(host),
 
