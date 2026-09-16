@@ -26,6 +26,8 @@ pub enum DomainsCommand {
         name: String,
         #[arg(long, default_value = "scan", help = t!(arg_domains_import))]
         import: String,
+        #[arg(long, help = t!(arg_domains_external))]
+        external: bool,
     },
     #[command(about = t!(cmd_domains_get))]
     Get {
@@ -50,7 +52,13 @@ impl Run for DomainsCommand {
         let client = ctx.client()?;
         match self {
             Self::List(page) => list(client, page.into()).await.map(ProgramRes::from),
-            Self::Add { name, import } => add(client, name, import).await.map(ProgramRes::from),
+            Self::Add {
+                name,
+                import,
+                external,
+            } => add(client, name, import, external)
+                .await
+                .map(ProgramRes::from),
             Self::Get { name } => get(client, &name).await.map(ProgramRes::from),
             Self::Remove { name } => remove(yes, client, &name).await.map(ProgramRes::from),
             Self::Check { name } => check(client, &name).await.map(ProgramRes::from),
@@ -104,18 +112,22 @@ async fn get(client: &Client<'_>, name: &str) -> Result<DomainInner> {
     resolve_domain(client, name).await
 }
 
-async fn add(client: &Client<'_>, name: String, import: String) -> Result<()> {
+async fn add(client: &Client<'_>, name: String, import: String, external: bool) -> Result<()> {
     let created = client
         .send_json::<DomainAdd>(
             DomainAddReq {
                 name,
                 import_method: import,
+                connection: external.then(|| "external".to_string()),
             },
             (),
         )
         .await?;
 
     success(t!(domain_created, &created.name, &created.id.to_string()));
+    if external {
+        info(t!(host_next_ownership));
+    }
 
     Ok(())
 }

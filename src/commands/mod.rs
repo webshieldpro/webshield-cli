@@ -6,6 +6,7 @@ pub mod auth;
 pub mod billing;
 pub mod dns;
 pub mod domains;
+pub mod hosts;
 pub mod lang;
 pub mod proxy;
 pub mod sites;

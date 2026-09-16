@@ -44,6 +44,7 @@ locale_fields! {
     cmd_dns,
     cmd_sites,
     cmd_proxy,
+    cmd_hosts,
     cmd_stats,
     cmd_billing,
     cmd_completion,
@@ -77,6 +78,7 @@ locale_fields! {
     cmd_domains_check,
     arg_domain_name,
     arg_domains_import,
+    arg_domains_external,
 
     // Help: dns.
     cmd_dns_list,
@@ -128,6 +130,19 @@ locale_fields! {
     arg_proxy_max_body,
     arg_proxy_block_bots,
     arg_proxy_html_cache,
+    arg_proxy_origin,
+    arg_proxy_origin_ssl,
+
+    // Help: hosts connected via DNS records.
+    cmd_hosts_list,
+    cmd_hosts_add,
+    cmd_hosts_records,
+    cmd_hosts_verify,
+    cmd_hosts_remove,
+    arg_hosts_domain_filter,
+    arg_hosts_mode,
+    arg_hosts_origin,
+    arg_hosts_origin_http,
 
     // Help: stats and billing.
     cmd_stats_summary,
@@ -244,6 +259,21 @@ locale_fields! {
     proxy_cache_purged(host),
     confirm_remove_proxy(host),
     not_found_proxy(host),
+
+    // hosts connected via DNS records.
+    h_certificate,
+    h_traffic,
+    host_added(host),
+    host_next_ownership,
+    host_verified(host),
+    host_next_traffic(name, target),
+    host_cert_pending,
+    host_check_missing(record),
+    host_check_mismatch(record, seen),
+    host_check_error,
+    host_removed(host),
+    confirm_remove_host(host),
+    host_not_found(host),
 
     // stats and billing.
     h_currency,

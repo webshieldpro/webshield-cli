@@ -14,6 +14,9 @@ pub struct DomainAdd;
 pub struct DomainAddReq {
     pub name: String,
     pub import_method: String,
+    /// `external`: nameservers stay at the provider, hostnames are connected via `hosts`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub connection: Option<String>,
 }
 #[derive(Deserialize, Serialize)]
 pub struct DomainInner {

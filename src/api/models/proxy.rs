@@ -46,6 +46,13 @@ pub struct ProxyInfo {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[serde(rename = "html_cache_enabled")]
     pub html_cache: Option<bool>,
+    /// Origin of a domain connected via records (delegated domains take it from DNS).
+    #[arg(long, help = t!(arg_proxy_origin))]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub origin: Option<String>,
+    #[arg(long, help = t!(arg_proxy_origin_ssl))]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub origin_ssl: Option<bool>,
 }
 
 #[derive(Serialize)]

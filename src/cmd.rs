@@ -77,6 +77,8 @@ define_run_command_enum! {
 
     Proxy(commands::proxy::ProxyCommand),
 
+    Hosts(commands::hosts::HostsCommand),
+
     Stats(commands::stats::StatsCommand),
 
     Billing(commands::billing::BillingCommand),

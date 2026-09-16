@@ -66,6 +66,11 @@ Copy-paste territory. Swap the names, you know the drill.
     # Managing domains
     webshield domains add example.com --import scan
 
+    # Keeping nameservers at your provider: connect names with records instead
+    webshield domains add example.com --external
+    webshield hosts add www.example.com --domain example.com --origin 203.0.113.10
+    webshield hosts verify www.example.com   # once _acme-challenge points at the printed target
+
     # DNS records
     webshield dns add example.com www A 203.0.113.10      # appends an extra value
     webshield dns set example.com @ A 203.0.113.10        # overwrites and sets exactly this value
