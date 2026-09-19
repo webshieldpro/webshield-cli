@@ -119,6 +119,7 @@ locale_fields! {
     arg_publish_site_id,
     arg_publish_dir,
     arg_publish_dry_run,
+    arg_publish_force,
     arg_bucket,
     arg_bucket_path,
 
@@ -252,6 +253,7 @@ locale_fields! {
     site_disabled(host),
     publish_summary(id, local, server, up, del, same),
     publish_no_changes,
+    publish_draft_pending,
     publish_dry_run,
     published,
     bucket_publish_started,

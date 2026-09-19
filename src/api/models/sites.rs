@@ -132,6 +132,12 @@ impl RequestDesc for Sites {
 pub struct FilesResponseSite {
     #[serde(default)]
     pub files: Vec<ServerFileSite>,
+    /// The draft holds changes that were never published. Matching the draft is not
+    /// the same as being live: an upload that succeeded while the publish call did
+    /// not leaves the draft ahead, and without this flag the next run would see
+    /// "nothing to do" and walk away, leaving the new pages unpublished forever.
+    #[serde(default)]
+    pub draft_dirty: bool,
 }
 pub struct SiteFiles;
 

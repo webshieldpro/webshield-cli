@@ -60,6 +60,8 @@ pub enum SitesCommand {
         dir: PathBuf,
         #[arg(long, help = t!(arg_publish_dry_run))]
         dry_run: bool,
+        #[arg(long, help = t!(arg_publish_force))]
+        force: bool,
     },
     #[command(about = t!(cmd_sites_publish_bucket))]
     PublishFromBucket {
@@ -95,6 +97,7 @@ impl Run for SitesCommand {
                 site_id,
                 dir,
                 dry_run,
+                force,
             } => {
                 // --site-id skips the site listing: a narrow sites:publish token has nothing else.
                 let id = match (site_id, hostname) {
@@ -102,7 +105,7 @@ impl Run for SitesCommand {
                     (None, Some(host)) => resolve_site(client, host).await?.id,
                     (None, None) => bail!(t!(publish_needs_site_ref)),
                 };
-                publish(client, id, &dir, dry_run)
+                publish(client, id, &dir, dry_run, force)
                     .await
                     .map(ProgramRes::from)
             }
@@ -219,7 +222,13 @@ async fn publish_from_bucket(
 
 // --- Publishing ---
 
-async fn publish(client: &Client<'_>, site_id: i64, dir: &Path, dry_run: bool) -> Result<()> {
+async fn publish(
+    client: &Client<'_>,
+    site_id: i64,
+    dir: &Path,
+    dry_run: bool,
+    force: bool,
+) -> Result<()> {
     let root = std::fs::canonicalize(dir)
         .with_context(|| t!(dir_not_found, &dir.display().to_string()))?;
     if !root.is_dir() {
@@ -227,6 +236,7 @@ async fn publish(client: &Client<'_>, site_id: i64, dir: &Path, dry_run: bool) -
     }
 
     let resp = client.send::<SiteFiles>(site_id).await?;
+    let draft_dirty = resp.draft_dirty;
 
     // 1. Current draft state on the server: path -> etag.
     let server: HashMap<String, String> = resp
@@ -268,7 +278,18 @@ async fn publish(client: &Client<'_>, site_id: i64, dir: &Path, dry_run: bool) -
     );
 
     if to_upload.is_empty() && to_delete.is_empty() {
-        info(t!(publish_no_changes));
+        // Nothing to transfer, but the draft may still be ahead of the live version.
+        if !draft_dirty && !force {
+            info(t!(publish_no_changes));
+            return Ok(());
+        }
+        info(t!(publish_draft_pending));
+        if dry_run {
+            info(t!(publish_dry_run));
+            return Ok(());
+        }
+        client.send::<SitePublish>(site_id).await?;
+        success(t!(published));
         return Ok(());
     }
     if dry_run {
@@ -496,9 +517,17 @@ mod tests {
 
     /// Mounts `GET files` returning the given draft state.
     async fn mount_files(server: &MockServer, files: Value) {
+        mount_files_state(server, files, false).await;
+    }
+
+    /// `draft_dirty` — the draft holds changes that were never published.
+    async fn mount_files_state(server: &MockServer, files: Value, draft_dirty: bool) {
         Mock::given(method("GET"))
             .and(url_path("/api/v1/static-sites/5/files"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "files": files })))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(json!({ "files": files, "draft_dirty": draft_dirty })),
+            )
             .mount(server)
             .await;
     }
@@ -544,7 +573,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        publish(&client(&server), 5, dir.path(), false)
+        publish(&client(&server), 5, dir.path(), false, false)
             .await
             .unwrap();
     }
@@ -557,7 +586,7 @@ mod tests {
         let server = MockServer::start().await;
         mount_files(&server, json!([])).await;
         // No POST mocks are mounted: any write attempt would 404 and fail the run.
-        publish(&client(&server), 5, dir.path(), true)
+        publish(&client(&server), 5, dir.path(), true, false)
             .await
             .unwrap();
     }
@@ -574,7 +603,35 @@ mod tests {
             json!([{"path": "index.html", "etag": md5_hex(content)}]),
         )
         .await;
-        publish(&client(&server), 5, dir.path(), false)
+        publish(&client(&server), 5, dir.path(), false, false)
+            .await
+            .unwrap();
+    }
+
+    /// A draft that was uploaded but never published must still be published, even
+    /// though the local directory now matches it byte for byte. Without this the
+    /// pages sat in the draft and every later run reported "no changes".
+    #[tokio::test]
+    async fn publish_snapshots_an_unpublished_draft_with_no_local_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let content = b"stable";
+        touch(dir.path(), "index.html", content);
+
+        let server = MockServer::start().await;
+        mount_files_state(
+            &server,
+            json!([{"path": "index.html", "etag": md5_hex(content)}]),
+            true,
+        )
+        .await;
+        Mock::given(method("POST"))
+            .and(url_path("/api/v1/static-sites/5/publish"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({})))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        publish(&client(&server), 5, dir.path(), false, false)
             .await
             .unwrap();
     }
@@ -583,7 +640,7 @@ mod tests {
     async fn publish_fails_on_missing_directory() {
         let server = MockServer::start().await;
         let missing = std::env::temp_dir().join("webshield-cli-no-such-dir-xyz");
-        assert!(publish(&client(&server), 5, &missing, true).await.is_err());
+        assert!(publish(&client(&server), 5, &missing, true, false).await.is_err());
     }
 
     #[tokio::test]

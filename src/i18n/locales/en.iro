@@ -235,6 +235,9 @@ dyndns_not_found: |host| format!("dynamic DNS is not enabled for `{host}`"),
 confirm_rotate_dyndns: |host| format!("Issue a new token for `{host}`? The router or scheduled job will need the new one."),
 confirm_remove_dyndns: |host| format!("Stop dynamic DNS for `{host}`? The token is revoked immediately."),
 
+publish_draft_pending: "The draft matches the local directory but was never published — publishing it.",
+arg_publish_force: "Publish the draft even when it already matches the local directory",
+
 h_currency: "Currency",
 h_balance: "Balance",
 h_metric: "Metric",

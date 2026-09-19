@@ -235,6 +235,9 @@ dyndns_not_found: |host| format!("динамический DNS для `{host}` �
 confirm_rotate_dyndns: |host| format!("Выпустить новый токен для `{host}`? Роутеру или заданию понадобится новый."),
 confirm_remove_dyndns: |host| format!("Остановить динамический DNS для `{host}`? Токен будет отозван сразу."),
 
+publish_draft_pending: "Draft совпадает с локальным каталогом, но не был опубликован — публикую.",
+arg_publish_force: "Опубликовать draft, даже если он уже совпадает с локальным каталогом",
+
 h_currency: "Валюта",
 h_balance: "Баланс",
 h_metric: "Показатель",
