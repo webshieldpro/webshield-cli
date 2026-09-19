@@ -73,6 +73,8 @@ define_run_command_enum! {
 
     Dns(commands::dns::DnsCommand),
 
+    Dyndns(commands::dyndns::DynDnsCommand),
+
     Sites(commands::sites::SitesCommand),
 
     Proxy(commands::proxy::ProxyCommand),

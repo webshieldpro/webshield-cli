@@ -77,6 +77,12 @@ Copy-paste territory. Swap the names, you know the drill.
     webshield dns remove example.com www A 203.0.113.10   # removes just this single value
     webshield dns add example.com www CNAME foo.example.com  # the trailing dot gets appended automatically
 
+    # A home server on a changing address
+    webshield dyndns add home.example.com --domain example.com   # prints the update token once
+    webshield dyndns list --domain example.com
+    # the device itself reports the address, no public IP needed on its side:
+    #   curl -fsS "https://dyn.webshield.pro/update?token=TOKEN"
+
     # Deploying static sites
     webshield sites create www.example.com --domain example.com
     webshield sites publish www.example.com --dir ./public       # uploads only new/modified assets

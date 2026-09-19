@@ -5,6 +5,7 @@ mod util;
 pub mod auth;
 pub mod billing;
 pub mod dns;
+pub mod dyndns;
 pub mod domains;
 pub mod hosts;
 pub mod lang;

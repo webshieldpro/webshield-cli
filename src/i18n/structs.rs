@@ -42,6 +42,7 @@ locale_fields! {
     cmd_auth,
     cmd_domains,
     cmd_dns,
+    cmd_dyndns,
     cmd_sites,
     cmd_proxy,
     cmd_hosts,
@@ -62,6 +63,14 @@ locale_fields! {
     arg_shell,
     arg_domain,
     arg_hostname,
+    cmd_dyndns_list,
+    cmd_dyndns_add,
+    cmd_dyndns_rotate,
+    cmd_dyndns_remove,
+    arg_dyndns_domain,
+    arg_dyndns_domain_filter,
+    arg_dyndns_ttl,
+    arg_dyndns_comment,
 
     // Help: auth.
     cmd_auth_login,
@@ -220,6 +229,17 @@ locale_fields! {
     dns_removed(name, rr_type, domain, count),
     record_not_found(name, rr_type),
     nothing_to_delete(name, rr_type),
+
+    // dynamic DNS.
+    h_address,
+    h_token,
+    dyndns_added(host),
+    dyndns_rotated(host),
+    dyndns_removed(host),
+    dyndns_token_once,
+    dyndns_not_found(host),
+    confirm_rotate_dyndns(host),
+    confirm_remove_dyndns(host),
 
     // sites.
     h_host,
