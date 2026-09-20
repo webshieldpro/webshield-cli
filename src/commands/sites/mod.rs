@@ -640,7 +640,9 @@ mod tests {
     async fn publish_fails_on_missing_directory() {
         let server = MockServer::start().await;
         let missing = std::env::temp_dir().join("webshield-cli-no-such-dir-xyz");
-        assert!(publish(&client(&server), 5, &missing, true, false).await.is_err());
+        assert!(publish(&client(&server), 5, &missing, true, false)
+            .await
+            .is_err());
     }
 
     #[tokio::test]
