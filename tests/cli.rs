@@ -9,7 +9,13 @@ use predicates::prelude::*;
 /// directory (no developer profiles leaking in) and no ambient credentials.
 fn webshield(config_home: &std::path::Path) -> Command {
     let mut cmd = Command::cargo_bin("webshield").unwrap();
+    // The locale is resolved from the environment, so a developer running with a
+    // non-English system locale would get translated messages and red assertions
+    // here. Pin it instead of trusting the host.
     cmd.env("XDG_CONFIG_HOME", config_home)
+        .env("LC_ALL", "C")
+        .env("LANG", "C")
+        .env_remove("LANGUAGE")
         .env_remove("WS_TOKEN")
         .env_remove("WS_API_URL")
         .env_remove("WS_PROFILE");
