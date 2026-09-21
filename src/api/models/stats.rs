@@ -1,5 +1,5 @@
 use crate::api::request_desc::RequestDesc;
-use crate::api::table::DisplayTable;
+use crate::commands::display_table::DisplayTable;
 use crate::t;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};

@@ -4,10 +4,10 @@ use crate::api::models::proxy::{
     Proxies, Proxy, ProxyData, ProxyDecl, ProxyDelete, ProxyInfo, ProxyNew, ProxyPatch,
     ProxyPurgeCache, ProxyResolve,
 };
-use crate::api::run::Run;
-use crate::api::table::ProgramRes;
 use crate::api::Client;
 use crate::commands::domains::resolve_domain;
+use crate::commands::prog_res::ProgramRes;
+use crate::commands::run::Run;
 use crate::commands::util::Page;
 use crate::t;
 use crate::util::context::Context;

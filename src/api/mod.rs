@@ -4,7 +4,5 @@ pub mod client;
 pub mod error;
 pub mod models;
 mod request_desc;
-pub mod run;
-pub mod table;
 
 pub use client::Client;

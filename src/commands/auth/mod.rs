@@ -5,9 +5,9 @@
 
 use crate::api::error::HttpError;
 use crate::api::models::billing::Billing;
-use crate::api::run::Run;
-use crate::api::table::ProgramRes;
 use crate::api::Client;
+use crate::commands::prog_res::ProgramRes;
+use crate::commands::run::Run;
 use crate::t;
 use crate::util::config::DEFAULT_API_URL;
 use crate::util::context::Context;

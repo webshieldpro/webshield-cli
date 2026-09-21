@@ -1,10 +1,10 @@
 //! Domain statistics and protection (scope `stats`, read-only).
 
 use crate::api::models::stats::{BanStats, StatBans, StatDomains, SummaryStats};
-use crate::api::run::Run;
-use crate::api::table::ProgramRes;
 use crate::api::Client;
 use crate::commands::domains::resolve_domain;
+use crate::commands::prog_res::ProgramRes;
+use crate::commands::run::Run;
 use crate::t;
 use crate::util::context::Context;
 use anyhow::Result;

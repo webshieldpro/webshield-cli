@@ -1,5 +1,5 @@
-use crate::api::run::Run;
-use crate::api::table::ProgramRes;
+use crate::commands::prog_res::ProgramRes;
+use crate::commands::run::Run;
 use crate::i18n::LocaleCode;
 use crate::util::context::Context;
 use clap::Subcommand;
@@ -22,9 +22,10 @@ pub enum LanguageCommand {
 impl Run for LanguageCommand {
     async fn run<'a>(self, ctx: &'a mut Context<'a>) -> Result<ProgramRes> {
         match self {
-            Self::Set { locale } => change(ctx, Some(locale)).map(ProgramRes::from),
-            Self::Unset => change(ctx, None).map(ProgramRes::from),
+            Self::Set { locale } => change(ctx, Some(locale)),
+            Self::Unset => change(ctx, None),
         }
+        .map(ProgramRes::from)
     }
 }
 

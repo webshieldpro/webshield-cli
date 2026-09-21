@@ -4,9 +4,9 @@ use crate::api::models::domain::{
     DomainAdd, DomainAddReq, DomainCheckDelegation, DomainDelete, DomainInner, DomainList, Domains,
     ResolveDomains,
 };
-use crate::api::run::Run;
-use crate::api::table::ProgramRes;
 use crate::api::Client;
+use crate::commands::prog_res::ProgramRes;
+use crate::commands::run::Run;
 use crate::commands::util::Page;
 use crate::t;
 use crate::util::context::Context;

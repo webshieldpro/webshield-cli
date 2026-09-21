@@ -6,10 +6,10 @@
 use crate::api::models::hosts::{
     ExternalHost, ExternalHostList, HostDelete, HostNew, HostNewReq, HostVerify, Hosts,
 };
-use crate::api::run::Run;
-use crate::api::table::ProgramRes;
 use crate::api::Client;
 use crate::commands::domains::resolve_domain;
+use crate::commands::prog_res::ProgramRes;
+use crate::commands::run::Run;
 use crate::t;
 use crate::util::context::Context;
 use crate::util::input::confirm;

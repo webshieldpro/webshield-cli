@@ -1,4 +1,4 @@
-use crate::api::table::ProgramRes;
+use crate::commands::prog_res::ProgramRes;
 use crate::util::context::Context;
 use anyhow::Result;
 

@@ -1,5 +1,5 @@
-use crate::api::run::Run;
-use crate::api::table::ProgramRes;
+use crate::commands::prog_res::ProgramRes;
+use crate::commands::run::Run;
 use crate::i18n::locale::LocaleCode;
 use crate::util::context::Context;
 use crate::util::output::OutputFormat;
@@ -29,9 +29,8 @@ pub struct Cli {
     #[arg(long, short = 'y', global = true, help = t!(arg_yes))]
     pub(crate) yes: bool,
 
-    // The value is already read in `main` before parsing (the locale is needed before
-    // the command tree is built); this declaration exists for help and validation.
-    #[arg(long, global = true, env = "WS_LANG", value_enum, help = t!(arg_lang))]
+    #[deprecated]
+    #[arg(long, value_enum, help =  t!(arg_lang), hide = true)]
     pub(crate) lang: Option<LocaleCode>,
 
     #[command(subcommand)]
@@ -41,7 +40,6 @@ pub struct Cli {
 macro_rules! define_run_command_enum {
     (
             $(
-                $(#[$variant_meta:meta])*
                 $variant:ident($ty:ty),
             )*
 
@@ -58,7 +56,7 @@ macro_rules! define_run_command_enum {
             async fn run<'a>(self, ctx: &'a mut Context<'a>) -> anyhow::Result<ProgramRes> {
                 match self {
                     $(
-                        Self::$variant(cmd) => cmd.run(ctx).await,
+                        Self::$variant(cmd) => Run::run(cmd, ctx).await,
                     )*
                 }
             }

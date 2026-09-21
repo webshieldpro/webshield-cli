@@ -9,8 +9,7 @@ use predicates::prelude::*;
 /// directory (no developer profiles leaking in) and no ambient credentials.
 fn webshield(config_home: &std::path::Path) -> Command {
     let mut cmd = Command::cargo_bin("webshield").unwrap();
-    cmd.env("WS_LANG", "en")
-        .env("XDG_CONFIG_HOME", config_home)
+    cmd.env("XDG_CONFIG_HOME", config_home)
         .env_remove("WS_TOKEN")
         .env_remove("WS_API_URL")
         .env_remove("WS_PROFILE");
@@ -79,14 +78,3 @@ fn completion_emits_a_bash_script() {
         .success()
         .stdout(predicate::str::contains("webshield"));
 }
-
-// #[test]
-// fn russian_locale_switches_runtime_messages() {
-//     let dir = tempfile::tempdir().unwrap();
-//     webshield(dir.path())
-//         .env("WS_LANG", "ru")
-//         .args(["domains", "list", "1"])
-//         .assert()
-//         .code(1)
-//         .stderr(predicate::str::contains("не найден токен"));
-// }

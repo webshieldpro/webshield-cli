@@ -2,8 +2,8 @@
 //!
 //! Every language is one `Locale` value literally included from `locales/<code>.iro`
 //! at compile time, so a missing or extra key is a compile error rather than a
-//! runtime surprise. The active locale is resolved once at startup (flag → env →
-//! profile → system locale) and read through the `t!` macro.
+//! runtime surprise. The active locale is resolved once at startup (profile → system locale)
+//! and read through the `t!` macro.
 
 use crate::i18n::Locale;
 use clap::ValueEnum;

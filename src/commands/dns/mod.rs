@@ -15,10 +15,10 @@ use crate::api::models::dns::{
     ChangeType, DNSDomainRecords, DNSDomainRecordsPost, DnsRecords, DnssecDelete, DnssecGet,
     DnssecPost, DnssecResp, RRSet, RRSetList, RecordItem,
 };
-use crate::api::run::Run;
-use crate::api::table::ProgramRes;
 use crate::api::Client;
 use crate::commands::domains::resolve_domain;
+use crate::commands::prog_res::ProgramRes;
+use crate::commands::run::Run;
 use crate::t;
 use crate::util::context::Context;
 use anyhow::{bail, Result};
