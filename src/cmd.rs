@@ -75,6 +75,8 @@ define_run_command_enum! {
 
     Sites(commands::sites::SitesCommand),
 
+    Apps(commands::apps::AppsCommand),
+
     Proxy(commands::proxy::ProxyCommand),
 
     Hosts(commands::hosts::HostsCommand),

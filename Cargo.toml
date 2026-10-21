@@ -1,8 +1,8 @@
 [package]
 name = "webshield-cli"
-version = "1.0.6"
+version = "1.1.0"
 edition = "2021"
-description = "Command-line client for WebShield (WAF, DNS, static sites)"
+description = "Command-line client for WebShield (WAF, DNS, static sites, apps)"
 license = "MIT"
 repository = "https://github.com/webshieldpro/webshield-cli"
 homepage = "https://webshield.pro"
@@ -38,6 +38,10 @@ console = "0.15"
 rpassword = "7"
 futures = "0.3"
 sys-locale = "0.3.2"
+# apps deploy: the directory goes up as one .tar.gz, ignore rules as in git.
+tar = "0.4"
+flate2 = "1"
+ignore = "0.4"
 
 
 [dev-dependencies]

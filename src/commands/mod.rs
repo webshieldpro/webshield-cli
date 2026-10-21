@@ -7,6 +7,7 @@
 
 mod util;
 
+pub mod apps;
 pub mod auth;
 pub mod billing;
 pub mod display_table;

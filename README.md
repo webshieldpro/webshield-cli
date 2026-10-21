@@ -1,6 +1,6 @@
 # WebShield CLI
 
-Domains, DNS records, static sites. The terminal handles all of it — zero trips through the web dashboard, zero waiting for pages to load. Deploy, tweak, keep an eye on things. And the dashboard itself? Give it a week and you'll honestly forget it even has a login button.
+Domains, DNS records, static sites, apps. The terminal handles all of it — zero trips through the web dashboard, zero waiting for pages to load. Deploy, tweak, keep an eye on things. And the dashboard itself? Give it a week and you'll honestly forget it even has a login button.
 
 Deep dives, weird edge cases, the full map — that lives in the [WebShield Docs](https://docs.webshield.pro).
 
@@ -88,6 +88,13 @@ Copy-paste territory. Swap the names, you know the drill.
     webshield sites publish www.example.com --dir ./public       # uploads only new/modified assets
     webshield sites publish --site-id 6 --dir ./public           # handy if the API token only sees this specific site ID
 
+    # Apps: the directory goes up as one archive, the build happens on our side
+    webshield apps deploy --project shop --app web               # waits until it is live, fails CI if not
+    webshield apps deploy --dir ./api --subdir .                 # or keep project/app in webshield.toml
+    webshield apps logs --project shop --app web -f              # follow the app output
+    webshield apps deployments --project shop --app web
+    webshield apps redeploy 42                                   # roll back to deployment #42
+
     # Proxy configs and redirects
     webshield proxy set app.example.com --domain example.com --bot-protection true --ssl true
     webshield proxy set old.example.com --domain example.com \
@@ -100,6 +107,32 @@ Copy-paste territory. Swap the names, you know the drill.
 
     # Pipe the output straight to JSON
     webshield -o json domains list 1
+
+### Apps from CI (GitHub Actions, private repositories included)
+
+The runner already has the code, so nothing on our side needs access to the repository.
+Issue a deploy token in the dashboard (Apps → project → "Token for CI"): it can deploy
+that one project and nothing else. Store it as the `WS_TOKEN` repository secret.
+
+```yaml
+# .github/workflows/deploy.yml
+name: deploy
+on:
+  push:
+    branches: [main]
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: curl -fsSL https://raw.githubusercontent.com/webshieldpro/webshield-cli/main/install.sh | sh
+      - run: ~/.local/bin/webshield apps deploy --project shop --app web
+        env:
+          WS_TOKEN: ${{ secrets.WS_TOKEN }}
+```
+
+What goes into the archive: everything except `.git` and what `.gitignore` or
+`.webshieldignore` exclude. Hidden files such as `.npmrc` stay. Limit — 100 MB.
 
 ### A note on `add` / `set` / `remove` logic (A, AAAA, TXT, MX)
 
