@@ -8,8 +8,9 @@ use std::path::PathBuf;
 
 use super::{finish, resolve, AppRef, Manifest};
 use crate::api::models::apps::{
-    Database, DatabaseCreateReq, EnvGet, EnvPut, KeyValue, KeyValueCreateReq, ProjectResource,
-    ProjectsByName, Redeploy, ResourceCreate, ResourceDelete, ResourceList,
+    Database, DatabaseCreateReq, DatabaseRecoveryWindow, EnvGet, EnvPut, KeyValue,
+    KeyValueCreateReq, ProjectResource, ProjectsByName, Redeploy, ResourceCreate, ResourceDelete,
+    ResourceList,
 };
 use crate::api::Client;
 use crate::commands::prog_res::ProgramRes;
@@ -74,6 +75,24 @@ pub enum DbCommand {
         #[arg(long, help = t!(arg_db_replica))]
         replica: bool,
     },
+    #[command(about = t!(cmd_db_restore))]
+    Restore {
+        #[command(flatten)]
+        target: ProjectRef,
+        #[arg(help = t!(arg_db_source))]
+        source: String,
+        #[arg(long = "as", help = t!(arg_db_restore_as))]
+        name: String,
+        #[arg(long, help = t!(arg_db_restore_time))]
+        time: Option<String>,
+    },
+    #[command(about = t!(cmd_db_window))]
+    Window {
+        #[command(flatten)]
+        target: ProjectRef,
+        #[arg(help = t!(arg_resource_name))]
+        name: String,
+    },
     #[command(about = t!(cmd_db_delete))]
     Delete {
         #[command(flatten)]
@@ -132,6 +151,27 @@ fn parse_pairs(
         out.push((name, value));
     }
     Ok(out)
+}
+
+/// `YYYY-MM-DDTHH:MM[:SS[.frac]]` with `Z` or `±HH:MM`; the rest the server checks.
+fn has_zone(time: &str) -> bool {
+    let b = time.as_bytes();
+    let date_ok = b.len() >= 16
+        && b[..16].iter().enumerate().all(|(i, c)| match i {
+            4 | 7 => *c == b'-',
+            10 => *c == b'T' || *c == b't' || *c == b' ',
+            13 => *c == b':',
+            _ => c.is_ascii_digit(),
+        });
+    let zone_ok = time.ends_with(['Z', 'z'])
+        || (b.len() >= 22 && {
+            let z = &b[b.len() - 6..];
+            matches!(z[0], b'+' | b'-')
+                && z[1..3].iter().all(u8::is_ascii_digit)
+                && z[3] == b':'
+                && z[4..].iter().all(u8::is_ascii_digit)
+        });
+    date_ok && zone_ok && time.is_ascii()
 }
 
 fn read_stdin() -> Result<String> {
@@ -199,6 +239,14 @@ async fn project_id(client: &Client<'_>, target: &ProjectRef) -> Result<i64> {
     }
 }
 
+async fn find<T: ProjectResource>(client: &Client<'_>, project: i64, name: &str) -> Result<i64> {
+    let list = client.send::<ResourceList<T>>(project).await?;
+    match T::entries(&list).into_iter().find(|(_, n)| n == name) {
+        Some((id, _)) => Ok(id),
+        None => bail!(t!(resource_not_found, name)),
+    }
+}
+
 async fn delete<T: ProjectResource>(
     client: &Client<'_>,
     target: &ProjectRef,
@@ -206,10 +254,7 @@ async fn delete<T: ProjectResource>(
     yes: bool,
 ) -> Result<ProgramRes> {
     let project = project_id(client, target).await?;
-    let list = client.send::<ResourceList<T>>(project).await?;
-    let Some((id, _)) = T::entries(&list).into_iter().find(|(_, n)| n == name) else {
-        bail!(t!(resource_not_found, name));
-    };
+    let id = find::<T>(client, project, name).await?;
     confirm(yes, &t!(confirm_delete_resource, name))?;
     client.send::<ResourceDelete<T>>(id).await?;
     success(t!(resource_deleting, name));
@@ -231,14 +276,49 @@ pub async fn db(client: &Client<'_>, cmd: DbCommand, yes: bool) -> Result<Progra
             let req = DatabaseCreateReq {
                 project: project_id(client, &target).await?,
                 name,
-                size_gb: size,
+                size_gb: Some(size),
                 instances: if replica { 2 } else { 1 },
+                restore_from: None,
+                restore_time: None,
             };
             let db = client
                 .send_json::<ResourceCreate<Database>>(req, ())
                 .await?;
             info(t!(resource_created, &db.reference));
             Ok(db.into())
+        }
+        DbCommand::Restore {
+            target,
+            source,
+            name,
+            time,
+        } => {
+            let project = project_id(client, &target).await?;
+            let source = find::<Database>(client, project, &source).await?;
+            // Момент — RFC 3339 с поясом: иначе непонятно, чьё это «15:00».
+            if let Some(time) = &time {
+                if !has_zone(time) {
+                    bail!(t!(restore_bad_time, time));
+                }
+            }
+            let req = DatabaseCreateReq {
+                project,
+                name,
+                size_gb: None,
+                instances: 1,
+                restore_from: Some(source),
+                restore_time: time,
+            };
+            let db = client
+                .send_json::<ResourceCreate<Database>>(req, ())
+                .await?;
+            info(t!(resource_created, &db.reference));
+            Ok(db.into())
+        }
+        DbCommand::Window { target, name } => {
+            let project = project_id(client, &target).await?;
+            let id = find::<Database>(client, project, &name).await?;
+            Ok(client.send::<DatabaseRecoveryWindow>(id).await?.into())
         }
         DbCommand::Delete { target, name } => delete::<Database>(client, &target, &name, yes).await,
     }
@@ -294,6 +374,28 @@ mod tests {
                 ("EMPTY".into(), "".into()),
             ]
         );
+    }
+
+    #[test]
+    fn restore_time_needs_a_zone() {
+        for ok in [
+            "2026-10-21T15:00:00+03:00",
+            "2026-10-21T12:00:00Z",
+            "2026-10-21T12:00:00.5-01:30",
+        ] {
+            assert!(has_zone(ok), "{ok}");
+        }
+        for bad in [
+            "2026-10-21T15:00:00",
+            "2026-10-21",
+            "yesterday",
+            "2026-10-21T15:00:00+0300",
+            "'; DROP TABLE x; --",
+            "2026-10-21T15:00:00+03:0\n",
+            "２026-10-21T15:00:00Z",
+        ] {
+            assert!(!has_zone(bad), "{bad}");
+        }
     }
 
     #[test]

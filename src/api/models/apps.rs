@@ -422,6 +422,8 @@ pub struct Database {
     pub error: String,
     #[serde(default)]
     pub reference: String,
+    #[serde(default)]
+    pub restore_source: String,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -541,8 +543,45 @@ fn status_with_error(status: &str, error: &str) -> String {
 pub struct DatabaseCreateReq {
     pub project: i64,
     pub name: String,
-    pub size_gb: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size_gb: Option<i64>,
     pub instances: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub restore_from: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub restore_time: Option<String>,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct RecoveryWindow {
+    pub earliest: Option<String>,
+    pub latest: Option<String>,
+}
+
+impl DisplayTable for RecoveryWindow {
+    fn headers(&self) -> Vec<&'static str> {
+        vec![t!(h_earliest), t!(h_latest)]
+    }
+
+    fn rows(&self) -> Vec<Vec<String>> {
+        let show = |v: &Option<String>| v.clone().unwrap_or_else(|| "—".into());
+        vec![vec![show(&self.earliest), show(&self.latest)]]
+    }
+}
+
+pub struct DatabaseRecoveryWindow;
+impl RequestDesc for DatabaseRecoveryWindow {
+    type Params = i64;
+    type Request = ();
+    type Response = RecoveryWindow;
+
+    fn get_url(id: i64) -> impl AsRef<str> {
+        format!("compute/databases/{id}/recovery-window")
+    }
+
+    fn method() -> Method {
+        Method::GET
+    }
 }
 
 #[derive(Serialize)]
