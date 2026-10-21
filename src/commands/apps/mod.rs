@@ -19,8 +19,8 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crate::api::models::apps::{
-    App, AppList, AppsByName, DeployUpload, DeployUrl, DeployUrlReq, Deployment, DeploymentGet,
-    Deployments, LogLine, Logs, Projects, Redeploy,
+    App, AppList, AppsByName, ComputeBillingGet, DeployUpload, DeployUrl, DeployUrlReq, Deployment,
+    DeploymentGet, Deployments, LogLine, Logs, Projects, Redeploy,
 };
 use crate::api::Client;
 use crate::commands::prog_res::ProgramRes;
@@ -100,6 +100,20 @@ pub enum AppsCommand {
     #[command(subcommand)]
     #[command(about = t!(cmd_apps_kv))]
     Kv(data::KvCommand),
+    #[command(about = t!(cmd_apps_usage))]
+    Usage {
+        #[command(flatten)]
+        target: data::ProjectRef,
+    },
+    #[command(about = t!(cmd_apps_cap))]
+    Cap {
+        #[command(flatten)]
+        target: data::ProjectRef,
+        #[arg(help = t!(arg_cap_amount))]
+        amount: String,
+    },
+    #[command(about = t!(cmd_apps_balance))]
+    Balance,
 }
 
 impl Run for AppsCommand {
@@ -157,6 +171,12 @@ impl Run for AppsCommand {
             Self::Env(cmd) => data::env(client, cmd).await,
             Self::Db(cmd) => data::db(client, cmd, yes).await,
             Self::Kv(cmd) => data::kv(client, cmd, yes).await,
+            Self::Usage { target } => data::usage(client, target).await,
+            Self::Cap { target, amount } => data::cap(client, target, &amount).await,
+            Self::Balance => client
+                .send::<ComputeBillingGet>(())
+                .await
+                .map(ProgramRes::from),
         }
     }
 }

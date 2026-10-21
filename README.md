@@ -96,6 +96,7 @@ Copy-paste territory. Swap the names, you know the drill.
     webshield apps redeploy 42                                   # roll back to deployment #42
     webshield apps db create db --size 2                         # Postgres in the project; kv create — Valkey
     webshield apps env set DATABASE_URL='${{db.url}}' --redeploy # references resolve on rollout
+    webshield apps usage --project shop                          # spending this month; apps cap 500 — monthly cap
     printf %s "$KEY" | webshield apps env set API_KEY            # a bare NAME reads the value from stdin
 
     # Proxy configs and redirects

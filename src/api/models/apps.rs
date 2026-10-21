@@ -26,6 +26,12 @@ pub struct Project {
     pub name: String,
     #[serde(default)]
     pub status: String,
+    /// Monthly spending cap in the account currency; `None` — no cap.
+    #[serde(default)]
+    pub spend_cap: Option<String>,
+    /// Why the project is paused: `debt`, `cap` or `None`.
+    #[serde(default)]
+    pub paused: Option<String>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -676,5 +682,177 @@ impl<T: ProjectResource> RequestDesc for ResourceDelete<T> {
 
     fn method() -> Method {
         Method::DELETE
+    }
+}
+
+/// One day of project spending; amounts and hours are decimal strings.
+#[derive(Deserialize, Serialize)]
+pub struct UsageDay {
+    pub date: String,
+    pub cost: String,
+    pub vcpu_hours: String,
+    pub ram_gb_hours: String,
+    pub disk_gb_hours: String,
+    #[serde(default)]
+    pub backup_gb_hours: String,
+}
+
+/// Spending of a project in the current calendar month.
+#[derive(Deserialize, Serialize)]
+pub struct ProjectUsage {
+    pub currency: String,
+    pub month_start: String,
+    pub cost: String,
+    pub spend_cap: Option<String>,
+    pub days: Vec<UsageDay>,
+}
+
+impl DisplayTable for ProjectUsage {
+    fn headers(&self) -> Vec<&'static str> {
+        vec![
+            t!(h_date),
+            t!(h_cost),
+            t!(h_vcpu_hours),
+            t!(h_ram_hours),
+            t!(h_disk_hours),
+            t!(h_backup_hours),
+        ]
+    }
+
+    fn rows(&self) -> Vec<Vec<String>> {
+        let sum = |pick: fn(&UsageDay) -> &str| {
+            let total: f64 = self
+                .days
+                .iter()
+                .map(|d| pick(d).parse::<f64>().unwrap_or(0.0))
+                .sum();
+            format!("{total:.3}")
+        };
+        let mut rows: Vec<Vec<String>> = self
+            .days
+            .iter()
+            .map(|d| {
+                vec![
+                    d.date.clone(),
+                    d.cost.clone(),
+                    d.vcpu_hours.clone(),
+                    d.ram_gb_hours.clone(),
+                    d.disk_gb_hours.clone(),
+                    d.backup_gb_hours.clone(),
+                ]
+            })
+            .collect();
+        let cost = match &self.spend_cap {
+            Some(cap) => format!("{} / {cap} {}", self.cost, self.currency),
+            None => format!("{} {}", self.cost, self.currency),
+        };
+        rows.push(vec![
+            t!(usage_total).to_string(),
+            cost,
+            sum(|d| &d.vcpu_hours),
+            sum(|d| &d.ram_gb_hours),
+            sum(|d| &d.disk_gb_hours),
+            sum(|d| &d.backup_gb_hours),
+        ]);
+        rows
+    }
+}
+
+pub struct ProjectUsageGet;
+impl RequestDesc for ProjectUsageGet {
+    type Params = i64;
+    type Request = ();
+    type Response = ProjectUsage;
+
+    fn get_url(id: i64) -> impl AsRef<str> {
+        format!("compute/projects/{id}/usage")
+    }
+
+    fn method() -> Method {
+        Method::GET
+    }
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct Prices {
+    pub vcpu: String,
+    pub ram_gb: String,
+    pub disk_gb: String,
+    #[serde(default)]
+    pub backup_gb: String,
+}
+
+/// Prepaid apps: balance, charges not debited yet, what is available, prices per 30 days.
+#[derive(Deserialize, Serialize)]
+pub struct ComputeBilling {
+    pub currency: String,
+    pub balance: String,
+    pub unbilled: String,
+    pub available: String,
+    pub pause_at: Option<String>,
+    pub prices: Prices,
+}
+
+impl DisplayTable for ComputeBilling {
+    fn headers(&self) -> Vec<&'static str> {
+        vec![t!(h_metric), t!(h_value)]
+    }
+
+    fn rows(&self) -> Vec<Vec<String>> {
+        let money = |v: &str| format!("{v} {}", self.currency);
+        let mut rows = vec![
+            vec![t!(h_balance).to_string(), money(&self.balance)],
+            vec![t!(h_unbilled).to_string(), money(&self.unbilled)],
+            vec![t!(h_available).to_string(), money(&self.available)],
+        ];
+        if let Some(at) = &self.pause_at {
+            rows.push(vec![t!(h_pause_at).to_string(), at.clone()]);
+        }
+        rows.extend([
+            vec![t!(h_price_vcpu).to_string(), money(&self.prices.vcpu)],
+            vec![t!(h_price_ram).to_string(), money(&self.prices.ram_gb)],
+            vec![t!(h_price_disk).to_string(), money(&self.prices.disk_gb)],
+            vec![
+                t!(h_price_backup).to_string(),
+                money(&self.prices.backup_gb),
+            ],
+        ]);
+        rows
+    }
+}
+
+pub struct ComputeBillingGet;
+impl RequestDesc for ComputeBillingGet {
+    type Params = ();
+    type Request = ();
+    type Response = ComputeBilling;
+
+    fn get_url(_: ()) -> impl AsRef<str> {
+        "compute/billing"
+    }
+
+    fn method() -> Method {
+        Method::GET
+    }
+}
+
+/// `null` removes the cap, so the field is always sent.
+#[derive(Serialize)]
+pub struct SpendCapReq {
+    pub spend_cap: Option<String>,
+}
+
+pub struct ProjectSpendCap;
+impl RequestDesc for ProjectSpendCap {
+    type Params = i64;
+    type Request = SpendCapReq;
+    type Response = Project;
+
+    fn get_url(id: i64) -> impl AsRef<str> {
+        format!("compute/projects/{id}")
+    }
+
+    fn method() -> Method {
+        Method::PATCH
     }
 }

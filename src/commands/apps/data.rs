@@ -9,8 +9,8 @@ use std::path::PathBuf;
 use super::{finish, resolve, AppRef, Manifest};
 use crate::api::models::apps::{
     Database, DatabaseCreateReq, DatabaseRecoveryWindow, EnvGet, EnvPut, KeyValue,
-    KeyValueCreateReq, ProjectResource, ProjectsByName, Redeploy, ResourceCreate, ResourceDelete,
-    ResourceList,
+    KeyValueCreateReq, ProjectResource, ProjectSpendCap, ProjectUsageGet, ProjectsByName, Redeploy,
+    ResourceCreate, ResourceDelete, ResourceList, SpendCapReq,
 };
 use crate::api::Client;
 use crate::commands::prog_res::ProgramRes;
@@ -227,6 +227,52 @@ pub async fn env(client: &Client<'_>, cmd: EnvCommand) -> Result<ProgramRes> {
     }
 }
 
+/// Spending of the project this calendar month, by day.
+pub async fn usage(client: &Client<'_>, target: ProjectRef) -> Result<ProgramRes> {
+    let project = project_id(client, &target).await?;
+    Ok(client.send::<ProjectUsageGet>(project).await?.into())
+}
+
+/// Sets (`AMOUNT`) or removes (`off`) the monthly spending cap of the project.
+pub async fn cap(client: &Client<'_>, target: ProjectRef, amount: &str) -> Result<ProgramRes> {
+    let spend_cap = parse_cap(amount)?;
+    let project = project_id(client, &target).await?;
+    let saved = client
+        .send_json::<ProjectSpendCap>(SpendCapReq { spend_cap }, project)
+        .await?;
+    match &saved.spend_cap {
+        Some(cap) => success(t!(cap_set, &saved.name, cap)),
+        None => success(t!(cap_removed, &saved.name)),
+    }
+    match saved.paused.as_deref() {
+        Some("cap") => info(t!(project_paused_cap)),
+        Some("debt") => info(t!(project_paused_debt)),
+        _ => {}
+    }
+    Ok(ProgramRes::Idle)
+}
+
+/// `off` (or `none`) — no cap; otherwise a non-negative amount with up to two decimals.
+fn parse_cap(value: &str) -> Result<Option<String>> {
+    let value = value.trim();
+    if value.eq_ignore_ascii_case("off") || value.eq_ignore_ascii_case("none") {
+        return Ok(None);
+    }
+    let normal = value.replace(',', ".");
+    let (whole, frac) = normal.split_once('.').unwrap_or((&normal, ""));
+    let digits = |part: &str| part.bytes().all(|b| b.is_ascii_digit());
+    let valid = !whole.is_empty()
+        && whole.len() <= 8
+        && digits(whole)
+        && frac.len() <= 2
+        && digits(frac)
+        && !(normal.contains('.') && frac.is_empty());
+    if !valid {
+        bail!(t!(cap_bad, value));
+    }
+    Ok(Some(normal))
+}
+
 /// Project id from `--project`, `webshield.toml` or the only project on the account.
 async fn project_id(client: &Client<'_>, target: &ProjectRef) -> Result<i64> {
     let file = Manifest::load(&target.dir)?;
@@ -374,6 +420,31 @@ mod tests {
                 ("EMPTY".into(), "".into()),
             ]
         );
+    }
+
+    #[test]
+    fn cap_accepts_money_and_off_only() {
+        assert_eq!(parse_cap("off").unwrap(), None);
+        assert_eq!(parse_cap("NONE").unwrap(), None);
+        assert_eq!(parse_cap("500").unwrap().as_deref(), Some("500"));
+        assert_eq!(parse_cap("12,5").unwrap().as_deref(), Some("12.5"));
+        assert_eq!(parse_cap(" 0.99 ").unwrap().as_deref(), Some("0.99"));
+        for bad in [
+            "",
+            "-1",
+            "1.",
+            ".5",
+            "1.234",
+            "1e3",
+            "NaN",
+            "1;DROP",
+            "１",
+            "123456789",
+            "1 000",
+            "0x10",
+        ] {
+            assert!(parse_cap(bad).is_err(), "{bad}");
+        }
     }
 
     #[test]
