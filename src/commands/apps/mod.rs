@@ -12,6 +12,8 @@
 //! subdir = "."
 //! ```
 
+mod data;
+
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -89,10 +91,20 @@ pub enum AppsCommand {
         #[arg(long, short = 'f', help = t!(arg_logs_follow))]
         follow: bool,
     },
+    #[command(subcommand)]
+    #[command(about = t!(cmd_apps_env))]
+    Env(data::EnvCommand),
+    #[command(subcommand)]
+    #[command(about = t!(cmd_apps_db))]
+    Db(data::DbCommand),
+    #[command(subcommand)]
+    #[command(about = t!(cmd_apps_kv))]
+    Kv(data::KvCommand),
 }
 
 impl Run for AppsCommand {
     async fn run<'a>(self, ctx: &'a mut Context<'a>) -> Result<ProgramRes> {
+        let yes = ctx.yes;
         let client = ctx.client()?;
         match self {
             Self::List => list(client).await.map(ProgramRes::from),
@@ -142,6 +154,9 @@ impl Run for AppsCommand {
                 logs(client, app.id, since, search, follow).await?;
                 Ok(ProgramRes::Idle)
             }
+            Self::Env(cmd) => data::env(client, cmd).await,
+            Self::Db(cmd) => data::db(client, cmd, yes).await,
+            Self::Kv(cmd) => data::kv(client, cmd, yes).await,
         }
     }
 }

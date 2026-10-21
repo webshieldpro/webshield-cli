@@ -327,3 +327,315 @@ impl RequestDesc for Logs {
         Method::GET
     }
 }
+
+/// Projects filtered by name (`None` — all of them).
+pub struct ProjectsByName;
+impl RequestDesc for ProjectsByName {
+    type Params = Option<String>;
+    type Request = ();
+    type Response = ProjectList;
+
+    fn get_url(name: Option<String>) -> impl AsRef<str> {
+        match name {
+            Some(name) => format!("compute/projects?name={}", q(&name)),
+            None => "compute/projects".into(),
+        }
+    }
+
+    fn method() -> Method {
+        Method::GET
+    }
+}
+
+/// App environment: the server replaces the whole map on PUT.
+#[derive(Deserialize, Serialize, Default)]
+pub struct Env {
+    pub variables: std::collections::BTreeMap<String, String>,
+    /// Print values, not only names (they are secrets more often than not).
+    #[serde(skip)]
+    pub show_values: bool,
+}
+
+impl DisplayTable for Env {
+    fn headers(&self) -> Vec<&'static str> {
+        if self.show_values {
+            vec![t!(h_name), t!(h_value)]
+        } else {
+            vec![t!(h_name)]
+        }
+    }
+
+    fn rows(&self) -> Vec<Vec<String>> {
+        self.variables
+            .iter()
+            .map(|(name, value)| {
+                if self.show_values {
+                    vec![name.clone(), value.clone()]
+                } else {
+                    vec![name.clone()]
+                }
+            })
+            .collect()
+    }
+}
+
+pub struct EnvGet;
+impl RequestDesc for EnvGet {
+    type Params = i64;
+    type Request = ();
+    type Response = Env;
+
+    fn get_url(service: i64) -> impl AsRef<str> {
+        format!("compute/services/{service}/env")
+    }
+
+    fn method() -> Method {
+        Method::GET
+    }
+}
+
+pub struct EnvPut;
+impl RequestDesc for EnvPut {
+    type Params = i64;
+    type Request = Env;
+    type Response = Env;
+
+    fn get_url(service: i64) -> impl AsRef<str> {
+        format!("compute/services/{service}/env")
+    }
+
+    fn method() -> Method {
+        Method::PUT
+    }
+}
+
+/// Postgres database of a project.
+#[derive(Deserialize, Serialize, Clone)]
+pub struct Database {
+    pub id: i64,
+    pub project: i64,
+    pub name: String,
+    pub size_gb: i64,
+    pub instances: i64,
+    pub status: String,
+    #[serde(default)]
+    pub error: String,
+    #[serde(default)]
+    pub reference: String,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct DatabaseList {
+    pub results: Vec<Database>,
+}
+
+impl DisplayTable for DatabaseList {
+    fn headers(&self) -> Vec<&'static str> {
+        vec![
+            t!(h_name),
+            t!(h_status),
+            t!(h_size),
+            t!(h_instances),
+            t!(h_reference),
+        ]
+    }
+
+    fn rows(&self) -> Vec<Vec<String>> {
+        self.results
+            .iter()
+            .map(|db| {
+                vec![
+                    db.name.clone(),
+                    status_with_error(&db.status, &db.error),
+                    format!("{} GB", db.size_gb),
+                    db.instances.to_string(),
+                    db.reference.clone(),
+                ]
+            })
+            .collect()
+    }
+}
+
+impl DisplayTable for Database {
+    fn headers(&self) -> Vec<&'static str> {
+        DatabaseList { results: vec![] }.headers()
+    }
+
+    fn rows(&self) -> Vec<Vec<String>> {
+        DatabaseList {
+            results: vec![self.clone()],
+        }
+        .rows()
+    }
+}
+
+/// Valkey store of a project.
+#[derive(Deserialize, Serialize, Clone)]
+pub struct KeyValue {
+    pub id: i64,
+    pub project: i64,
+    pub name: String,
+    pub memory_mb: i64,
+    pub persistent: bool,
+    pub status: String,
+    #[serde(default)]
+    pub error: String,
+    #[serde(default)]
+    pub reference: String,
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct KeyValueList {
+    pub results: Vec<KeyValue>,
+}
+
+impl DisplayTable for KeyValueList {
+    fn headers(&self) -> Vec<&'static str> {
+        vec![
+            t!(h_name),
+            t!(h_status),
+            t!(h_memory),
+            t!(h_on_disk),
+            t!(h_reference),
+        ]
+    }
+
+    fn rows(&self) -> Vec<Vec<String>> {
+        self.results
+            .iter()
+            .map(|kv| {
+                vec![
+                    kv.name.clone(),
+                    status_with_error(&kv.status, &kv.error),
+                    format!("{} MB", kv.memory_mb),
+                    if kv.persistent { "+" } else { "—" }.into(),
+                    kv.reference.clone(),
+                ]
+            })
+            .collect()
+    }
+}
+
+impl DisplayTable for KeyValue {
+    fn headers(&self) -> Vec<&'static str> {
+        KeyValueList { results: vec![] }.headers()
+    }
+
+    fn rows(&self) -> Vec<Vec<String>> {
+        KeyValueList {
+            results: vec![self.clone()],
+        }
+        .rows()
+    }
+}
+
+fn status_with_error(status: &str, error: &str) -> String {
+    if error.is_empty() {
+        status.to_string()
+    } else {
+        format!("{status}: {error}")
+    }
+}
+
+#[derive(Serialize)]
+pub struct DatabaseCreateReq {
+    pub project: i64,
+    pub name: String,
+    pub size_gb: i64,
+    pub instances: i64,
+}
+
+#[derive(Serialize)]
+pub struct KeyValueCreateReq {
+    pub project: i64,
+    pub name: String,
+    pub memory_mb: i64,
+    pub persistent: bool,
+}
+
+/// Databases (`db`) and key-value stores (`kv`) share the REST shape.
+pub struct ResourceList<T>(std::marker::PhantomData<T>);
+pub struct ResourceCreate<T>(std::marker::PhantomData<T>);
+pub struct ResourceDelete<T>(std::marker::PhantomData<T>);
+
+pub trait ProjectResource {
+    const PATH: &'static str;
+    type List: serde::de::DeserializeOwned;
+    type Item: serde::de::DeserializeOwned;
+    type Create: Serialize;
+
+    /// (id, name) of each listed item.
+    fn entries(list: &Self::List) -> Vec<(i64, String)>;
+}
+
+impl ProjectResource for Database {
+    const PATH: &'static str = "compute/databases";
+    type List = DatabaseList;
+    type Item = Database;
+    type Create = DatabaseCreateReq;
+
+    fn entries(list: &DatabaseList) -> Vec<(i64, String)> {
+        list.results
+            .iter()
+            .map(|x| (x.id, x.name.clone()))
+            .collect()
+    }
+}
+
+impl ProjectResource for KeyValue {
+    const PATH: &'static str = "compute/kv";
+    type List = KeyValueList;
+    type Item = KeyValue;
+    type Create = KeyValueCreateReq;
+
+    fn entries(list: &KeyValueList) -> Vec<(i64, String)> {
+        list.results
+            .iter()
+            .map(|x| (x.id, x.name.clone()))
+            .collect()
+    }
+}
+
+impl<T: ProjectResource> RequestDesc for ResourceList<T> {
+    /// Project id.
+    type Params = i64;
+    type Request = ();
+    type Response = T::List;
+
+    fn get_url(project: i64) -> impl AsRef<str> {
+        format!("{}?project={project}", T::PATH)
+    }
+
+    fn method() -> Method {
+        Method::GET
+    }
+}
+
+impl<T: ProjectResource> RequestDesc for ResourceCreate<T> {
+    type Params = ();
+    type Request = T::Create;
+    type Response = T::Item;
+
+    fn get_url(_: ()) -> impl AsRef<str> {
+        T::PATH
+    }
+
+    fn method() -> Method {
+        Method::POST
+    }
+}
+
+impl<T: ProjectResource> RequestDesc for ResourceDelete<T> {
+    type Params = i64;
+    type Request = ();
+    // 204 — only the status matters.
+    type Response = serde::de::IgnoredAny;
+
+    fn get_url(id: i64) -> impl AsRef<str> {
+        format!("{}/{id}", T::PATH)
+    }
+
+    fn method() -> Method {
+        Method::DELETE
+    }
+}
