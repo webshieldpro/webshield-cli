@@ -20,6 +20,10 @@ fn q(value: &str) -> String {
         .collect()
 }
 
+fn mb(bytes: u64) -> String {
+    format!("{:.0} MB", bytes as f64 / 1048576.0)
+}
+
 #[derive(Deserialize, Serialize, Clone)]
 pub struct Project {
     pub id: i64,
@@ -65,11 +69,25 @@ pub struct App {
     pub id: i64,
     pub project: i64,
     pub name: String,
+    /// `app` — a container image, `worker` — functions (Workers).
+    #[serde(default)]
+    pub kind: String,
     pub port: i64,
     pub min_scale: i64,
     pub max_scale: i64,
     #[serde(default)]
     pub active_deployment: Option<DeploymentSummary>,
+    /// Data of a function and the quota of its storage; `None` for apps.
+    #[serde(default)]
+    pub storage_bytes: Option<u64>,
+    #[serde(default)]
+    pub storage_quota_bytes: Option<u64>,
+}
+
+impl App {
+    pub fn is_function(&self) -> bool {
+        self.kind == "worker"
+    }
 }
 
 #[derive(Deserialize, Serialize)]
@@ -85,8 +103,10 @@ impl DisplayTable for AppList {
             t!(h_id),
             t!(h_project),
             t!(h_app),
+            t!(h_kind),
             t!(h_port),
             t!(h_deployment),
+            t!(h_storage),
         ]
     }
 
@@ -105,12 +125,23 @@ impl DisplayTable for AppList {
                     .as_ref()
                     .map(|d| format!("#{}", d.id))
                     .unwrap_or_else(|| "—".into());
+                let storage = match (app.storage_bytes, app.storage_quota_bytes) {
+                    (Some(used), Some(quota)) => format!("{} / {}", mb(used), mb(quota)),
+                    _ => "—".into(),
+                };
+                let (kind, port) = if app.is_function() {
+                    (t!(kind_function), "—".into())
+                } else {
+                    (t!(kind_app), app.port.to_string())
+                };
                 vec![
                     app.id.to_string(),
                     project,
                     app.name.clone(),
-                    app.port.to_string(),
+                    kind.to_string(),
+                    port,
                     active,
+                    storage,
                 ]
             })
             .collect()
@@ -854,5 +885,157 @@ impl RequestDesc for ProjectSpendCap {
 
     fn method() -> Method {
         Method::PATCH
+    }
+}
+
+/// Data operation of a function (D1, KV, restore): runs in the background.
+#[derive(Deserialize, Serialize, Clone)]
+pub struct FleetOperation {
+    pub id: i64,
+    pub kind: String,
+    #[serde(default)]
+    pub target: String,
+    pub status: String,
+    #[serde(default)]
+    pub output: String,
+    #[serde(default)]
+    pub error: String,
+    #[serde(default)]
+    pub created_at: String,
+}
+
+impl FleetOperation {
+    pub fn in_progress(&self) -> bool {
+        matches!(self.status.as_str(), "queued" | "running")
+    }
+}
+
+impl DisplayTable for FleetOperation {
+    fn headers(&self) -> Vec<&'static str> {
+        vec![t!(h_id), t!(h_operation), t!(h_status), t!(h_created)]
+    }
+
+    fn rows(&self) -> Vec<Vec<String>> {
+        vec![vec![
+            self.id.to_string(),
+            self.kind.clone(),
+            self.status.clone(),
+            self.created_at.clone(),
+        ]]
+    }
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct FleetOperationList(pub Vec<FleetOperation>);
+
+impl DisplayTable for FleetOperationList {
+    fn headers(&self) -> Vec<&'static str> {
+        vec![
+            t!(h_id),
+            t!(h_operation),
+            t!(h_target),
+            t!(h_status),
+            t!(h_created),
+            t!(h_error),
+        ]
+    }
+
+    fn rows(&self) -> Vec<Vec<String>> {
+        self.0
+            .iter()
+            .map(|op| {
+                vec![
+                    op.id.to_string(),
+                    op.kind.clone(),
+                    op.target.clone(),
+                    op.status.clone(),
+                    op.created_at.clone(),
+                    op.error.clone(),
+                ]
+            })
+            .collect()
+    }
+}
+
+/// Starts a D1/KV operation: multipart with the project archive.
+pub struct OperationCreate;
+impl RequestDesc for OperationCreate {
+    type Params = i64;
+    type Request = Form;
+    type Response = FleetOperation;
+
+    fn get_url(service: i64) -> impl AsRef<str> {
+        format!("compute/services/{service}/operations")
+    }
+
+    fn method() -> Method {
+        Method::POST
+    }
+}
+
+/// Recent operations of a function.
+pub struct Operations;
+impl RequestDesc for Operations {
+    type Params = i64;
+    type Request = ();
+    type Response = FleetOperationList;
+
+    fn get_url(service: i64) -> impl AsRef<str> {
+        format!("compute/services/{service}/operations")
+    }
+
+    fn method() -> Method {
+        Method::GET
+    }
+}
+
+pub struct OperationGet;
+impl RequestDesc for OperationGet {
+    type Params = i64;
+    type Request = ();
+    type Response = FleetOperation;
+
+    fn get_url(id: i64) -> impl AsRef<str> {
+        format!("compute/operations/{id}")
+    }
+
+    fn method() -> Method {
+        Method::GET
+    }
+}
+
+pub struct FunctionRecoveryWindow;
+impl RequestDesc for FunctionRecoveryWindow {
+    type Params = i64;
+    type Request = ();
+    type Response = RecoveryWindow;
+
+    fn get_url(service: i64) -> impl AsRef<str> {
+        format!("compute/services/{service}/recovery-window")
+    }
+
+    fn method() -> Method {
+        Method::GET
+    }
+}
+
+#[derive(Serialize)]
+pub struct RestoreReq {
+    pub time: String,
+}
+
+pub struct FunctionRestore;
+impl RequestDesc for FunctionRestore {
+    type Params = i64;
+    type Request = RestoreReq;
+    type Response = FleetOperation;
+
+    fn get_url(service: i64) -> impl AsRef<str> {
+        format!("compute/services/{service}/restore")
+    }
+
+    fn method() -> Method {
+        Method::POST
     }
 }

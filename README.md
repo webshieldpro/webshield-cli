@@ -98,6 +98,10 @@ Copy-paste territory. Swap the names, you know the drill.
     webshield apps env set DATABASE_URL='${{db.url}}' --redeploy # references resolve on rollout
     webshield apps usage --project shop                          # spending this month; apps cap 500 — monthly cap
     printf %s "$KEY" | webshield apps env set API_KEY            # a bare NAME reads the value from stdin
+    webshield apps deploy --app api                              # a function: the directory with wrangler.jsonc
+    webshield apps d1 migrate --app api app-db                   # D1 migrations from ./migrations; d1 execute --command
+    webshield apps kv import --app api CACHE seed/keys.json      # Workers KV, Wrangler bulk format
+    webshield apps restore --app api --time 2026-10-21T15:00:00+03:00   # data back to a moment; apps window
 
     # Proxy configs and redirects
     webshield proxy set app.example.com --domain example.com --bot-protection true --ssl true

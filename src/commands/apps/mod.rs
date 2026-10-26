@@ -1,4 +1,6 @@
 //! Apps (compute): deploy a directory, follow the build, read logs.
+//! Functions (Workers) deploy the same way — the server runs `celld deploy` by
+//! `wrangler.jsonc`; their D1, KV and data restore are in `functions`.
 //!
 //! `deploy` packs the directory into a `.tar.gz` (honouring `.gitignore` and
 //! `.webshieldignore`, never `.git`), uploads it and waits for the deployment: the
@@ -13,6 +15,7 @@
 //! ```
 
 mod data;
+mod functions;
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -100,6 +103,26 @@ pub enum AppsCommand {
     #[command(subcommand)]
     #[command(about = t!(cmd_apps_kv))]
     Kv(data::KvCommand),
+    #[command(subcommand)]
+    #[command(about = t!(cmd_apps_d1))]
+    D1(functions::D1Command),
+    #[command(about = t!(cmd_apps_restore))]
+    Restore {
+        #[command(flatten)]
+        target: AppRef,
+        #[arg(long, help = t!(arg_function_restore_time))]
+        time: String,
+    },
+    #[command(about = t!(cmd_apps_window))]
+    Window {
+        #[command(flatten)]
+        target: AppRef,
+    },
+    #[command(about = t!(cmd_apps_operations))]
+    Operations {
+        #[command(flatten)]
+        target: AppRef,
+    },
     #[command(about = t!(cmd_apps_usage))]
     Usage {
         #[command(flatten)]
@@ -171,6 +194,10 @@ impl Run for AppsCommand {
             Self::Env(cmd) => data::env(client, cmd).await,
             Self::Db(cmd) => data::db(client, cmd, yes).await,
             Self::Kv(cmd) => data::kv(client, cmd, yes).await,
+            Self::D1(cmd) => functions::d1(client, cmd).await,
+            Self::Restore { target, time } => functions::restore(client, target, time, yes).await,
+            Self::Window { target } => functions::window(client, target).await,
+            Self::Operations { target } => functions::operations(client, target).await,
             Self::Usage { target } => data::usage(client, target).await,
             Self::Cap { target, amount } => data::cap(client, target, &amount).await,
             Self::Balance => client

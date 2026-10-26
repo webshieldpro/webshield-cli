@@ -1,4 +1,5 @@
-//! App variables and project data services: Postgres databases and Valkey stores.
+//! App variables and project data services: Postgres databases and Valkey stores;
+//! `kv import`/`kv delete-keys` work on the KV of a function (see `functions`).
 //!
 //! A variable may hold a reference such as `${{db.url}}` — the server substitutes the
 //! connection string on rollout, so secrets of the database never pass through here.
@@ -6,6 +7,7 @@
 use std::io::Read;
 use std::path::PathBuf;
 
+use super::functions::KvBulk;
 use super::{finish, resolve, AppRef, Manifest};
 use crate::api::models::apps::{
     Database, DatabaseCreateReq, DatabaseRecoveryWindow, EnvGet, EnvPut, KeyValue,
@@ -127,6 +129,24 @@ pub enum KvCommand {
         #[arg(help = t!(arg_resource_name))]
         name: String,
     },
+    #[command(about = t!(cmd_kv_import))]
+    Import {
+        #[command(flatten)]
+        target: AppRef,
+        #[arg(help = t!(arg_kv_namespace))]
+        namespace: String,
+        #[arg(help = t!(arg_kv_file))]
+        file: PathBuf,
+    },
+    #[command(about = t!(cmd_kv_delete_keys))]
+    DeleteKeys {
+        #[command(flatten)]
+        target: AppRef,
+        #[arg(help = t!(arg_kv_namespace))]
+        namespace: String,
+        #[arg(help = t!(arg_kv_file))]
+        file: PathBuf,
+    },
 }
 
 /// `NAME=value` pairs; a bare `NAME` takes its value from stdin, so a secret stays out of
@@ -154,7 +174,7 @@ fn parse_pairs(
 }
 
 /// `YYYY-MM-DDTHH:MM[:SS[.frac]]` with `Z` or `±HH:MM`; the rest the server checks.
-fn has_zone(time: &str) -> bool {
+pub(super) fn has_zone(time: &str) -> bool {
     let b = time.as_bytes();
     let date_ok = b.len() >= 16
         && b[..16].iter().enumerate().all(|(i, c)| match i {
@@ -395,6 +415,16 @@ pub async fn kv(client: &Client<'_>, cmd: KvCommand, yes: bool) -> Result<Progra
             Ok(kv.into())
         }
         KvCommand::Delete { target, name } => delete::<KeyValue>(client, &target, &name, yes).await,
+        KvCommand::Import {
+            target,
+            namespace,
+            file,
+        } => super::functions::kv_bulk(client, target, namespace, file, KvBulk::Put).await,
+        KvCommand::DeleteKeys {
+            target,
+            namespace,
+            file,
+        } => super::functions::kv_bulk(client, target, namespace, file, KvBulk::Delete).await,
     }
 }
 
